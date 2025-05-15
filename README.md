@@ -20,13 +20,13 @@ API documentation is available at [https://docs.rs/crabapple](https://docs.rs/cr
 
 ## Quick Start
 
-```rust
-use crabapple::{Backup, BackupAuth};
+```rust ,no_run
+use crabapple::{Backup, Authentication};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize a backup session for a device UDID with a password
     let udid_folder = "/Users/you/Library/Application Support/MobileSync/Backup/DEVICE_UDID";
-    let auth = BackupAuth::Password("your_password".into());
+    let auth = Authentication::Password("your_password".into());
     let backup = Backup::new(udid_folder, auth)?;
 
     // List all files in the backup
