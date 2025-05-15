@@ -1,0 +1,44 @@
+# crabapple
+
+Crabapple is a Rust library for reading, inspecting, and extracting data from encrypted iOS backups created by Finder, Apple Devices, or iTunes.
+
+## Features
+
+- Load and parse the backup's `Manifest.plist` to obtain metadata, device info, and encryption parameters.
+- Derive encryption keys using PBKDF2-HMAC-SHA1 and unwrap protection class keys (AES-KW).
+- Decrypt and query the SQLCipher-encrypted `Manifest.db` to list available files in the backup.
+- Retrieve and decrypt individual files by protection class.
+- Cross-platform support for macOS, Windows, and Linux default backup locations.
+
+## Installation
+
+TODO
+
+## Documentation
+
+API documentation is available at [https://docs.rs/crabapple](https://docs.rs/crabapple).
+
+## Quick Start
+
+```rust
+use crabapple::{MobileBackup, BackupAuth};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Initialize a backup session for a device UDID with a password
+    let udid_folder = "/Users/you/Library/Application Support/MobileSync/Backup/DEVICE_UDID";
+    let auth = BackupAuth::Password("your_password".into());
+    let backup = MobileBackup::new(udid_folder, auth)?;
+
+    // List all files in the backup
+    let entries = backup.get_backup_files_list()?;
+    for entry in entries {
+        println!("{} - {}/{}", entry.file_id, entry.domain, entry.relative_path);
+    }
+
+    // Decrypt and read a specific file
+    let data = backup.get_file_decrypted_copy("MediaDomain", "Manifest.db")?;
+    println!("Read {} bytes", data.len());
+
+    Ok(())
+}
+```
