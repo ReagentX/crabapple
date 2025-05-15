@@ -12,7 +12,7 @@ Crabapple is a Rust library for reading, inspecting, and extracting data from en
 
 ## Installation
 
-TODO
+This library is available on [`crates.io`](https://crates.io/crabapple)
 
 ## Documentation
 
@@ -21,13 +21,13 @@ API documentation is available at [https://docs.rs/crabapple](https://docs.rs/cr
 ## Quick Start
 
 ```rust
-use crabapple::{MobileBackup, BackupAuth};
+use crabapple::{Backup, BackupAuth};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize a backup session for a device UDID with a password
     let udid_folder = "/Users/you/Library/Application Support/MobileSync/Backup/DEVICE_UDID";
     let auth = BackupAuth::Password("your_password".into());
-    let backup = MobileBackup::new(udid_folder, auth)?;
+    let backup = Backup::new(udid_folder, auth)?;
 
     // List all files in the backup
     let entries = backup.get_backup_files_list()?;
@@ -42,3 +42,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 ```
+
+## Crabapple Tree
+
+![My Crabapple Tree](/resources/crabapple.png)
