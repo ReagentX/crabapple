@@ -1,27 +1,25 @@
 [package]
 authors = ["Christopher Sardegna <imessage@reagentx.net>"]
 name = "crabapple"
-version = "0.1.0"
+version = "0.0.0"
 edition = "2024"
 license = "GPL-3.0-or-later"
 description = "A library for iOS backup decryption and encryption"
-exclude = [".github"]
+exclude = [".github", "resources"]
+readme = "README.md"
+repository = "https://github.com/ReagentX/crabapple"
+keywords = ["ios", "cryptography", "backup"]
+categories = ["cryptography", "security", "database"]
 
 [dependencies]
 aes = "0.8.4"
-aes-kw = "0.2.1" # Added for AES Key Wrap
+aes-kw = "0.2.1"
 chrono = { version = "0.4.41", features = ["serde"] }
-pbkdf2 = { version = "0.12.2", features = [
-    "simple",
-    "hmac",
-] } # Added hmac feature
+pbkdf2 = { version = "0.12.2", features = ["simple", "hmac"] }
 plist = { version = "1.7.1", features = ["serde"] }
-rusqlite = { version = "0.35.0", features = [
-    "chrono",
-    "bundled",
-] } # bundled for SQLCipher
+rusqlite = { version = "0.35.0", features = ["bundled", "blob"] }
 serde = { version = "1.0.193", features = ["derive"] }
 serde_bytes = "0.11.17"
-cbc = "0.1.2" # Added for AES CBC mode
-sha1 = "0.10.6" # Added for PBKDF2
-sha2 = "0.10.9" # Added for PBKDF2
+cbc = "0.1.2"
+sha1 = "0.10.6"
+sha2 = "0.10.9"
