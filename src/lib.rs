@@ -11,7 +11,7 @@ pub use backup::Backup;
 pub use crate::backup::types::BackupFileEntry;
 
 /// Authentication options for encrypted backups.
-pub use backup::types::BackupAuth;
+pub use backup::types::Authentication;
 
 /// Retrieve basic device info from a device backup folder.
 pub use backup::device::get_device_basic_info;

@@ -1,6 +1,7 @@
 //! Type definitions for iOS backup metadata structures, authentication, and file entries.
 
 use chrono::{DateTime, Utc};
+use plist::Value;
 use serde::Deserialize;
 use std::fs::File;
 use std::path::{Path, PathBuf};
@@ -8,15 +9,16 @@ use std::{collections::HashMap, io::BufReader};
 
 use serde_bytes::ByteBuf;
 
-use crate::error::{BackupError, Result};
-
-use super::util::tlv_blocks;
+use crate::{
+    backup::util::tlv_blocks,
+    error::{BackupError, Result},
+};
 
 /// Authentication method for encrypted backups.
 ///
 /// Use a plaintext password or provide a pre-derived encryption key (hex-encoded).
 #[derive(Debug, Clone)]
-pub enum BackupAuth {
+pub enum Authentication {
     /// Cleartext password provided by the user.
     Password(String),
     /// Pre-derived key (hex-encoded) to decrypt backup.
@@ -286,6 +288,92 @@ impl DecryptedManifestDb {
     }
 }
 
+#[derive(Debug, Deserialize, Clone)]
+#[serde(rename_all = "PascalCase")]
+pub struct MBFile {
+    pub last_modified: u64,
+    pub flags: u64,
+    pub group_id: i64,
+    pub last_status_change: u64,
+    pub birth: u64,
+    pub size: u64,
+    pub mode: u64,
+    pub user_id: Option<u64>,
+    pub inode_number: u64,
+    pub protection_class: u32,
+}
+
+impl MBFile {
+    /// Generate an instance from a NSKeyedArchiver blob.
+    pub fn from_plist(plist_data: Value) -> Result<MBFile> {
+        let root_index = plist_data
+            .as_dictionary()
+            .ok_or_else(|| BackupError::General("MBFile plist is not a dictionary".to_string()))?
+            .get("$top")
+            .unwrap()
+            .as_dictionary()
+            .unwrap()
+            .get("root")
+            .unwrap()
+            .as_uid()
+            .unwrap()
+            .get() as usize;
+
+        let top_dict = plist_data
+            .as_dictionary()
+            .ok_or_else(|| BackupError::General("MBFile plist is not a dictionary".to_string()))?
+            .get("$objects")
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .get(root_index)
+            .unwrap()
+            .as_dictionary()
+            .unwrap();
+
+        Ok(Self {
+            last_modified: top_dict
+                .get("LastModified")
+                .unwrap()
+                .as_unsigned_integer()
+                .unwrap(),
+            flags: top_dict
+                .get("Flags")
+                .unwrap()
+                .as_unsigned_integer()
+                .unwrap(),
+            group_id: top_dict
+                .get("GroupID")
+                .unwrap()
+                .as_signed_integer()
+                .unwrap(),
+            last_status_change: top_dict
+                .get("LastStatusChange")
+                .unwrap()
+                .as_unsigned_integer()
+                .unwrap(),
+            birth: top_dict
+                .get("Birth")
+                .unwrap()
+                .as_unsigned_integer()
+                .unwrap(),
+            size: top_dict.get("Size").unwrap().as_unsigned_integer().unwrap(),
+            mode: top_dict.get("Mode").unwrap().as_unsigned_integer().unwrap(),
+            user_id: top_dict.get("UserID").unwrap().as_unsigned_integer(),
+            inode_number: top_dict
+                .get("InodeNumber")
+                .unwrap()
+                .as_unsigned_integer()
+                .unwrap(),
+            protection_class: top_dict
+                .get("ProtectionClass")
+                .unwrap()
+                .as_unsigned_integer()
+                .unwrap() as u32,
+        })
+    }
+}
+
 /// Entry for a single file recorded in `Manifest.db`.
 #[derive(Debug, Clone)]
 pub struct BackupFileEntry {
@@ -298,7 +386,5 @@ pub struct BackupFileEntry {
     /// File flags as stored in the database.
     pub flags: u32,
     /// Protection class ID.
-    pub protection_class: u32,
-    /// Optional wrapped encryption key blob.
-    pub encryption_key_wrapped: Option<Vec<u8>>,
+    pub metadata: MBFile,
 }

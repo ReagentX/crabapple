@@ -1,5 +1,6 @@
 //! Module for loading, decrypting, and querying the Manifest.db of an iOS backup.
 
+use plist::Value;
 use rusqlite::Connection;
 use std::collections::HashMap;
 use std::fs::File;
@@ -7,7 +8,7 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 use crate::backup::crypto::{aes_decrypt_cbc_with_padding, aes_kw_unwrap_bytes}; // For decrypting DB if needed
-use crate::backup::types::{BackupFileEntry, DecryptedManifestDb, ProtectionClassKey};
+use crate::backup::types::{BackupFileEntry, DecryptedManifestDb, MBFile, ProtectionClassKey};
 use crate::backup::util;
 use crate::error::{BackupError, Result};
 
@@ -66,10 +67,6 @@ impl ManifestDb {
                     )
                 })?;
 
-            println!("Manifest key bytes: {:#?}", manifest_key_bytes);
-            println!("Class {:?} key: {:#?}", class_bytes, class_key_entry);
-            println!("Key bytes: {:#?}", key_bytes);
-
             let key = aes_kw_unwrap_bytes(&class_key_entry.key, key_bytes)
                 .map_err(|_| BackupError::KeyUnwrapFailed(manifest_class))?;
 
@@ -101,6 +98,26 @@ impl ManifestDb {
     }
 }
 
+/// Query all domains from the open `Manifest.db` connection.
+pub fn query_all_domains(conn: &Connection) -> Result<Vec<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT DISTINCT
+             CASE
+                 WHEN INSTR(domain, '-') > 0
+                 THEN SUBSTR(domain, 1, INSTR(domain, '-') - 1)
+                 ELSE
+                 domain
+             END AS domain
+             FROM Files;",
+    )?;
+    let mut rows = stmt.query([])?;
+    let mut domains = Vec::new();
+    while let Some(row) = rows.next()? {
+        domains.push(row.get(0)?);
+    }
+    Ok(domains)
+}
+
 /// Query all file entries from the open `Manifest.db` connection.
 ///
 /// # Arguments
@@ -108,21 +125,33 @@ impl ManifestDb {
 ///
 /// # Errors
 /// Returns `BackupError::Database` if a query fails.
-// TODO: Fix the schema, support `file` plist stored in col
 pub fn query_all_files(conn: &Connection) -> Result<Vec<BackupFileEntry>> {
-    let mut stmt = conn.prepare(
-        "SELECT fileID, domain, relativePath, flags, protectionclass, encryptionKey FROM Files",
-    )?;
+    let mut stmt =
+        conn.prepare("SELECT rowid, fileID, domain, relativePath, flags, file FROM Files")?;
     let mut rows = stmt.query([])?;
     let mut entries = Vec::new();
     while let Some(row) = rows.next()? {
+
+        let file_id = row.get(0)?;
+
+        let blob = conn
+            .blob_open(rusqlite::DatabaseName::Main, "Files", "file", file_id, true)
+            .ok()
+            .unwrap();
+
+        let plist = Value::from_reader(blob)
+            .map_err(|_| BackupError::InvalidTlvData("Failed to parse file plist".to_string()))?;
+
+        let mbfile = MBFile::from_plist(plist).map_err(|_| {
+            BackupError::InvalidTlvData("Failed to parse MBFile from plist".to_string())
+        })?;
+
         entries.push(BackupFileEntry {
-            file_id: row.get(0)?,
-            domain: row.get(1)?,
-            relative_path: row.get(2)?,
-            flags: row.get(3)?,
-            protection_class: row.get(4)?,
-            encryption_key_wrapped: row.get(5)?, // This is a Vec<u8> if stored as BLOB
+            file_id: row.get(1)?,
+            domain: row.get(2)?,
+            relative_path: row.get(3)?,
+            flags: row.get(4)?,
+            metadata: mbfile, // Store the plist as metadata
         });
     }
     Ok(entries)
@@ -142,17 +171,30 @@ pub fn query_all_files(conn: &Connection) -> Result<Vec<BackupFileEntry>> {
 pub fn query_file_by_path(conn: &Connection, path: &str) -> Result<Option<BackupFileEntry>> {
     // Path in DB is typically Domain-RelativePath
     let mut stmt = conn.prepare(
-        "SELECT fileID, domain, relativePath, flags, protectionclass, encryptionKey FROM Files WHERE relativePath = ?"
+        "SELECT rowid, fileID, domain, relativePath, flags, file FROM Files WHERE relativePath = ?",
     )?;
     let mut rows = stmt.query([path])?;
     if let Some(row) = rows.next()? {
+        let file_id = row.get(0)?;
+
+        let blob = conn
+            .blob_open(rusqlite::DatabaseName::Main, "Files", "file", file_id, true)
+            .ok()
+            .unwrap();
+
+        let plist = Value::from_reader(blob)
+            .map_err(|_| BackupError::InvalidTlvData("Failed to parse file plist".to_string()))?;
+
+        let mbfile = MBFile::from_plist(plist).map_err(|_| {
+            BackupError::InvalidTlvData("Failed to parse MBFile from plist".to_string())
+        })?;
+
         Ok(Some(BackupFileEntry {
-            file_id: row.get(0)?,
-            domain: row.get(1)?,
-            relative_path: row.get(2)?,
-            flags: row.get(3)?,
-            protection_class: row.get(4)?,
-            encryption_key_wrapped: row.get(5)?,
+            file_id: row.get(1)?,
+            domain: row.get(2)?,
+            relative_path: row.get(3)?,
+            flags: row.get(4)?,
+            metadata: mbfile, // Store the plist as metadata
         }))
     } else {
         Ok(None)

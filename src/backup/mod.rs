@@ -9,7 +9,7 @@ pub mod util;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use self::types::{BackupAuth, BackupFileEntry, DecryptedManifestDb, Manifest, ManifestData};
+use self::types::{Authentication, BackupFileEntry, DecryptedManifestDb, Manifest, ManifestData};
 use crate::error::{BackupError, Result};
 
 use self::crypto::{
@@ -41,7 +41,7 @@ impl Backup {
     ///
     /// # Errors
     /// Returns `BackupError` if paths are invalid, manifest loading fails, or decryption fails.
-    pub fn new<P: AsRef<Path>>(backup_path: P, auth: BackupAuth) -> Result<Self> {
+    pub fn new<P: AsRef<Path>>(backup_path: P, auth: Authentication) -> Result<Self> {
         let device_backup_path = backup_path.as_ref().to_path_buf();
         if !device_backup_path.is_dir() {
             return Err(BackupError::InvalidBackupRoot(
@@ -63,8 +63,7 @@ impl Backup {
         let backup_date = chrono::DateTime::<chrono::Utc>::from(plist_modification_time);
 
         // 1. Load Manifest.plist and extract necessary keys and info
-        // This call now correctly uses types::PlistInfo::load, as PlistInfo is imported from self::types
-        println!("Loading Manifest.plist...");
+        // This call now correctly uses types::PlistInfo::load, as PlistInfo is imported from self::type
         let mut manifest = Manifest::load(&manifest_plist)?;
         manifest.backup_date = Some(backup_date); // Set the backup date from file metadata
 
@@ -76,13 +75,15 @@ impl Backup {
             })?;
 
             let main_derived_key = match auth {
-                BackupAuth::Password(ref password) => {
-                    derive_key_from_password(password.as_bytes(), &bkb.dpsl, bkb.dpic, &bkb.salt, bkb.iter)?
-                }
-                BackupAuth::DerivedKey(ref key_hex) => util::hex_decode(key_hex)?,
+                Authentication::Password(ref password) => derive_key_from_password(
+                    password.as_bytes(),
+                    &bkb.dpsl,
+                    bkb.dpic,
+                    &bkb.salt,
+                    bkb.iter,
+                )?,
+                Authentication::DerivedKey(ref key_hex) => util::hex_decode(key_hex)?,
             };
-
-            println!("Derived key: {:?}", main_derived_key);
 
             let unlocked_keys_map = unlock_keys_from_manifest(&main_derived_key, &manifest)?;
             (Some(main_derived_key), Some(unlocked_keys_map))
@@ -99,12 +100,14 @@ impl Backup {
             unlocked_class_keys: unlocked_class_keys_opt.clone(),
         };
 
-        println!("Manifest data: {:?}", manifest_data);
-
         // 3. Decrypt and process Manifest.db
         // Convert ByteBuf to &[u8] by using as_ref().map()
-        let manifest_key_ref = manifest_data.manifest.manifest_key.as_ref().map(|buf| buf.as_ref());
-        
+        let manifest_key_ref = manifest_data
+            .manifest
+            .manifest_key
+            .as_ref()
+            .map(|buf| buf.as_ref());
+
         let manifest_db_obj = ManifestDb::new(
             &device_backup_path.join("Manifest.db"),
             manifest_data.manifest.is_encrypted,
@@ -151,6 +154,17 @@ impl Backup {
             .map(|v| util::hex_encode(v))
     }
 
+    /// Get all of the domains in the backup.
+    pub fn query_all_domains(&self) -> Result<Vec<String>> {
+        let db_info = self
+            .decrypted_manifest_db
+            .as_ref()
+            .ok_or(BackupError::ManifestDbNotFound)?;
+
+        let conn = db_info.try_get_connection()?;
+        manifest_db::query_all_domains(&conn)
+    }
+
     /// List all files recorded in `Manifest.db`.
     ///
     /// # Errors
@@ -193,13 +207,20 @@ impl Backup {
 
         let file_data = fs::read(&source_file_path)?;
         if self.is_encrypted() {
-            let protection_class = file_entry.protection_class;
-            let wrapped_key = file_entry.encryption_key_wrapped.as_ref().ok_or_else(|| {
-                BackupError::Crypto(format!(
-                    "File {} (class {}) is encrypted but no wrapped key found",
-                    relative_path, protection_class
-                ))
-            })?;
+            let protection_class = file_entry.metadata.protection_class;
+            let class_key_entry = self
+                .manifest_data
+                .unlocked_class_keys
+                .as_ref()
+                .and_then(|keys| keys.get(&protection_class)) // Class 4
+                .ok_or_else(|| {
+                    BackupError::Crypto(
+                        "Class {manifest_class} key not found, needed to decrypt Manifest.db key"
+                            .to_string(),
+                    )
+                })?;
+            let wrapped_key = &class_key_entry.key;
+
             let unlocked_keys =
                 self.manifest_data
                     .unlocked_class_keys
@@ -244,9 +265,18 @@ impl Backup {
             .join(&entry.file_id);
         let data = std::fs::read(&source)?;
         if self.is_encrypted() {
-            let wrapped = entry.encryption_key_wrapped.as_ref().ok_or_else(|| {
-                BackupError::Crypto(format!("No wrapped key for file {}", entry.relative_path))
-            })?;
+            let class_key_entry = self
+                .manifest_data
+                .unlocked_class_keys
+                .as_ref()
+                .and_then(|keys| keys.get(&entry.metadata.protection_class)) // Class 4
+                .ok_or_else(|| {
+                    BackupError::Crypto(
+                        "Class {manifest_class} key not found, needed to decrypt Manifest.db key"
+                            .to_string(),
+                    )
+                })?;
+            let wrapped_key = &class_key_entry.key;
             let keys = self
                 .manifest_data
                 .unlocked_class_keys
@@ -254,7 +284,7 @@ impl Backup {
                 .ok_or_else(|| {
                     BackupError::Crypto("Missing class keys for encrypted backup".to_string())
                 })?;
-            let key = unwrap_key_for_class(entry.protection_class, wrapped, keys)?;
+            let key = unwrap_key_for_class(entry.metadata.protection_class, wrapped_key, keys)?;
             aes_decrypt_cbc_with_padding(&data, &key)
         } else {
             Ok(data)
@@ -275,27 +305,5 @@ impl Backup {
             .as_ref()
             .ok_or(BackupError::ManifestDbNotFound)?;
         info.try_get_connection()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::path::Path;
-
-    use crate::{Backup, BackupAuth};
-
-    #[test]
-    fn test_run() {
-        let backup_path = Path::new(
-            "/Users/chris/Library/Application Support/MobileSync/Backup/00008110-001458313A22801E",
-        );
-        print!("Backup path: {:?}", backup_path);
-        let auth = BackupAuth::Password("science".to_string());
-        let backup = Backup::new(backup_path, auth);
-        match backup {
-            Ok(_) => println!("Backup resolved successfully"),
-            Err(e) => panic!("Failed to read backup: {:?}", e),
-        };
-        backup.unwrap().get_backup_files_list().unwrap();
     }
 }
