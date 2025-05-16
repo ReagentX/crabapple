@@ -13,12 +13,10 @@ categories = ["cryptography", "security", "database"]
 
 [dependencies]
 aes = "0.8.4"
+plist = "1.7.1"
 aes-kw = "0.2.1"
 pbkdf2 = { version = "0.12.2", features = ["simple", "hmac"] }
-plist = { version = "1.7.1", features = ["serde"] }
 rusqlite = { version = "0.35.0", features = ["bundled", "blob"] }
-serde = { version = "1.0.193", features = ["derive"] }
-serde_bytes = "0.11.17"
 cbc = "0.1.2"
 sha1 = "0.10.6"
 sha2 = "0.10.9"

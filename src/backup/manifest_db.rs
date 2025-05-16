@@ -61,10 +61,9 @@ impl ManifestDb {
                 .as_ref()
                 .and_then(|keys| keys.get(&manifest_class)) // Class 4
                 .ok_or_else(|| {
-                    BackupError::Crypto(
+                    BackupError::Crypto(format!(
                         "Class {manifest_class} key not found, needed to decrypt Manifest.db key"
-                            .to_string(),
-                    )
+                    ))
                 })?;
 
             let key = aes_kw_unwrap_bytes(&class_key_entry.key, key_bytes)

@@ -6,7 +6,7 @@ pub mod manifest_db;
 pub mod types;
 pub mod util;
 
-use std::fs::{self, File};
+use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
@@ -27,9 +27,9 @@ use self::manifest_db::ManifestDb;
 /// including metadata loading, manifest database access, and file decryption.
 pub struct Backup {
     /// Filesystem path to the specific device backup folder.
-    backup_path: PathBuf,
+    pub backup_path: PathBuf,
     /// Parsed manifest and decryption state.
-    manifest_data: ManifestData,
+    pub manifest_data: ManifestData,
     /// Decrypted manifest database handle, if available.
     decrypted_manifest_db: Option<DecryptedManifestDb>,
 }
@@ -53,6 +53,8 @@ impl Backup {
         }
 
         let manifest_plist = device_backup_path.join("Manifest.plist");
+
+        // Ensure that the manifest plist file exists
         if !manifest_plist.exists() {
             return Err(BackupError::ManifestPlistNotFound(
                 device_backup_path
@@ -63,7 +65,6 @@ impl Backup {
         }
 
         // 1. Load Manifest.plist and extract necessary keys and info
-        // This call now correctly uses types::PlistInfo::load, as PlistInfo is imported from self::type
         let manifest = Manifest::load(&manifest_plist)?;
 
         let (main_decryption_key_opt, unlocked_class_keys_opt) = if manifest.is_encrypted {
@@ -244,7 +245,7 @@ impl Backup {
     }
 
     /// Access parsed `Manifest.plist` metadata.
-    pub fn plist_info(&self) -> &Manifest {
+    pub fn manifest(&self) -> &Manifest {
         &self.manifest_data.manifest
     }
 
@@ -262,10 +263,11 @@ impl Backup {
                 .as_ref()
                 .and_then(|keys| keys.get(&entry.metadata.protection_class)) // Class 4
                 .ok_or_else(|| {
-                    BackupError::Crypto(
-                        "Class {manifest_class} key not found, needed to decrypt Manifest.db key"
-                            .to_string(),
-                    )
+                    BackupError::Crypto(format!(
+                        "Class {} key not found, needed to decrypt {} key",
+                        entry.metadata.protection_class,
+                        entry.file_id
+                    ))
                 })?;
             let wrapped_key = &class_key_entry.key;
             let keys = self

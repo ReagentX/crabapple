@@ -1,12 +1,9 @@
 //! Type definitions for iOS backup metadata structures, authentication, and file entries.
 
 use plist::Value;
-use serde::Deserialize;
+use std::collections::HashMap;
 use std::fs::File;
 use std::path::{Path, PathBuf};
-use std::{collections::HashMap, io::BufReader};
-
-use serde_bytes::ByteBuf;
 
 use crate::{
     backup::util::tlv_blocks,
@@ -25,23 +22,16 @@ pub enum Authentication {
 }
 
 /// Parsed data from `Manifest.plist` describing the backup.
-#[derive(Debug, Deserialize, Clone)]
-#[serde(rename_all = "PascalCase")]
+#[derive(Debug, Clone)]
 pub struct Manifest {
-    /// raw CFData for BackupKeyBag
-    #[serde(rename = "BackupKeyBag", with = "serde_bytes", default)]
-    pub backup_key_bag_raw: Option<ByteBuf>,
     /// Optional key bag containing encrypted class keys.
-    #[serde(default)]
-    #[serde(skip)]
     pub backup_key_bag: Option<BackupKeyBag>,
     /// Whether the backup is encrypted.
     pub is_encrypted: bool,
     /// Device-specific lockdown info.
     pub lockdown: ManifestLockdownInfo,
     /// Optional raw manifest key (typically 40 bytes) used for Manifest.db decryption.
-    #[serde(with = "serde_bytes", default)]
-    pub manifest_key: Option<ByteBuf>,
+    pub manifest_key: Option<Vec<u8>>,
 }
 
 impl Manifest {
@@ -65,53 +55,132 @@ impl Manifest {
         })?;
 
         // Deserialize directly into PlistInfo
-        let mut manifest: Manifest = ::plist::from_reader(BufReader::new(file)).map_err(|e| {
-            BackupError::PlistParseError(format!("Failed to parse Manifest.plist: {}", e))
-        })?;
+        // let file = File::open(&path).map_err(|_| {
+        //     BackupError::InvalidTlvData("Failed to open Manifest.plist".to_string())
+        // })?;
 
-        // If encrypted, unpack that CFData blob
-        if manifest.is_encrypted {
-            let raw = manifest
-                .backup_key_bag_raw
-                .take()
-                .ok_or_else(|| BackupError::MissingPlistKey("BackupKeyBag is missing".into()))?;
-            let bag = BackupKeyBag::from_bytes(&raw);
+        let plist = Value::from_reader(file)
+            .map_err(|_| BackupError::InvalidTlvData("Failed to parse file plist".to_string()))?;
 
-            manifest.backup_key_bag = Some(bag);
+        let top_dict = plist
+            .as_dictionary()
+            .ok_or_else(|| BackupError::InvalidTlvData("plist is not a dictionary".to_string()))?;
 
-            // also ensure manifest_key was present…
-            if manifest.manifest_key.is_none() {
-                return Err(BackupError::MissingPlistKey(
-                    "ManifestKey is missing".into(),
-                ));
-            }
+        let is_encrypted = top_dict
+            .get("IsEncrypted")
+            .and_then(Value::as_boolean)
+            .unwrap_or(false);
+
+        let bag = if is_encrypted {
+            let raw_key_bag = top_dict
+                .get("BackupKeyBag")
+                .unwrap()
+                .as_data()
+                .unwrap()
+                .to_vec();
+            Some(BackupKeyBag::from_bytes(&raw_key_bag))
+        } else {
+            None
+        };
+
+        // also ensure manifest_key was present…
+        if is_encrypted {
+            let _manifest_key = top_dict
+                .get("ManifestKey")
+                .unwrap()
+                .as_data()
+                .unwrap()
+                .to_vec();
+            // TODO: Safer checks!
+            // if manifest_key.is_none() {
+            //     return Err(BackupError::MissingPlistKey(
+            //         "ManifestKey is missing".into(),
+            //     ));
+            // }
         }
+
+        let manifest = Self {
+            backup_key_bag: bag,
+            is_encrypted: top_dict.get("IsEncrypted").unwrap().as_boolean().unwrap(),
+            lockdown: ManifestLockdownInfo::from_plist(top_dict.get("Lockdown").unwrap().clone())
+                .unwrap(),
+            manifest_key: Some(
+                top_dict
+                    .get("ManifestKey")
+                    .unwrap()
+                    .as_data()
+                    .unwrap()
+                    .to_vec(),
+            ),
+        };
+
         Ok(manifest)
     }
 }
 
 /// Device metadata from the backup's `Manifest.plist`.
-#[derive(Debug, Deserialize, Clone)]
-#[serde(rename_all = "PascalCase")]
+#[derive(Debug, Clone)]
 pub struct ManifestLockdownInfo {
     /// iOS build version (e.g., "18E199").
-    #[serde(rename = "BuildVersion")]
     pub build_version: String,
     /// Human-readable device name.
-    #[serde(rename = "DeviceName")]
     pub device_name: String,
     /// Device product type (e.g., "iPhone9,4").
-    #[serde(rename = "ProductType")]
     pub product_type: String,
     /// iOS version (e.g., "15.5").
-    #[serde(rename = "ProductVersion")]
     pub product_version: String,
     /// Device serial number.
-    #[serde(rename = "SerialNumber")]
     pub serial_number: String,
     /// Unique device identifier (UDID).
-    #[serde(rename = "UniqueDeviceID")]
     pub unique_device_id: String,
+}
+
+impl ManifestLockdownInfo {
+    /// Parse from plist
+    fn from_plist(plist_data: Value) -> Result<ManifestLockdownInfo> {
+        let dict = plist_data.as_dictionary().ok_or_else(|| {
+            BackupError::PlistParseError("ManifestLockdownInfo plist is not a dictionary".into())
+        })?;
+
+        Ok(ManifestLockdownInfo {
+            build_version: dict
+                .get("BuildVersion")
+                .unwrap()
+                .as_string()
+                .unwrap()
+                .to_string(),
+            device_name: dict
+                .get("DeviceName")
+                .unwrap()
+                .as_string()
+                .unwrap()
+                .to_string(),
+            product_type: dict
+                .get("ProductType")
+                .unwrap()
+                .as_string()
+                .unwrap()
+                .to_string(),
+            product_version: dict
+                .get("ProductVersion")
+                .unwrap()
+                .as_string()
+                .unwrap()
+                .to_string(),
+            serial_number: dict
+                .get("SerialNumber")
+                .unwrap()
+                .as_string()
+                .unwrap()
+                .to_string(),
+            unique_device_id: dict
+                .get("UniqueDeviceID")
+                .unwrap()
+                .as_string()
+                .unwrap()
+                .to_string(),
+        })
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -203,7 +272,7 @@ impl BackupKeyBag {
 }
 
 /// Data for a single protection class key entry.
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Clone)]
 pub struct ClassKeyData {
     /// Alternative WPKY if provided.
     pub wpky: Option<Vec<u8>>,
@@ -284,8 +353,7 @@ impl DecryptedManifestDb {
     }
 }
 
-#[derive(Debug, Deserialize, Clone)]
-#[serde(rename_all = "PascalCase")]
+#[derive(Debug, Clone)]
 pub struct MBFile {
     pub last_modified: u64,
     pub flags: u64,
