@@ -113,7 +113,6 @@ impl Backup {
             manifest_data.manifest.is_encrypted,
             manifest_key_ref,
             &manifest_data.unlocked_class_keys,
-            &device_backup_path,
         )?;
 
         Ok(Self {
@@ -123,7 +122,10 @@ impl Backup {
         })
     }
 
-    /// Returns the current device UDID.
+    /// Returns the current device `UDID` (the backup folder name).
+    ///
+    /// # Errors
+    /// Returns `BackupError::InvalidBackupRoot` if the `UDID` cannot be retrieved as a string.
     pub fn udid(&self) -> Result<&str> {
         self.backup_path
             .file_name()
@@ -177,14 +179,14 @@ impl Backup {
     /// Decrypt and return the contents of a file in the backup.
     ///
     /// # Arguments
-    /// * `domain` - Protection domain for the file (not currently used in path lookup).
-    /// * `relative_path` - The file's path within the backup catalog.
+    /// * `file_id` - The unique identifier of the file to decrypt (`SHA1` hash).
     ///
     /// # Returns
-    /// File data as a byte vector.
+    /// Plaintext data as a byte vector, decrypted if encrypted.
     ///
     /// # Errors
-    /// Returns `BackupError` if lookup, decryption, or I/O fails.
+    /// Returns [`BackupError::FileNotFoundInBackup`] if the file ID is not found,
+    /// or [`BackupError::Io`] for I/O or decryption failures.
     pub fn get_file_decrypted_copy(&self, file_id: &str) -> Result<Vec<u8>> {
         let db_info = self
             .decrypted_manifest_db
@@ -249,7 +251,16 @@ impl Backup {
         &self.manifest_data.manifest
     }
 
-    /// Decrypt a file based on its catalog entry.
+    /// Decrypt the file represented by [`BackupFileEntry`], returning plaintext bytes.
+    ///
+    /// # Arguments
+    /// * `entry` - A [`BackupFileEntry`] containing metadata and encrypted file ID.
+    ///
+    /// # Returns
+    /// Plaintext data as a byte vector.
+    ///
+    /// # Errors
+    /// Returns [`BackupError::Crypto`] on decryption errors or missing keys.
     pub fn decrypt_entry(&self, entry: &BackupFileEntry) -> Result<Vec<u8>> {
         let source = self
             .backup_path
@@ -291,7 +302,10 @@ impl Backup {
         Ok(domains)
     }
 
-    /// Open a rusqlite `Connection` to the decrypted (or raw) Manifest.db.
+    /// Open and return a rusqlite [`rusqlite::Connection`] to the decrypted (or raw) `Manifest.db`.
+    ///
+    /// # Errors
+    /// Returns [`BackupError::ManifestDbNotFound` ]if the database info is missing.
     pub fn manifest_connection(&self) -> Result<rusqlite::Connection> {
         let info = self
             .decrypted_manifest_db

@@ -12,32 +12,27 @@ use crate::backup::types::{BackupFileEntry, DecryptedManifestDb, MBFile, Protect
 use crate::backup::util;
 use crate::error::{BackupError, Result};
 
-/// Represents the decrypted or raw Manifest.db and associated SQLCipher key.
-///
-/// Use `ManifestDb::new` to initialize and decrypt if needed.
+/// Represents the backup's `Manifest.db`, decrypted if necessary, and holds decryption info.
 pub struct ManifestDb {
     decrypted_db_info: DecryptedManifestDb,
 }
 
 impl ManifestDb {
-    /// Open (and decrypt if necessary) the backup's `Manifest.db`.
+    /// Open (and decrypt if necessary) the backup's `Manifest.db`, returning a [`ManifestDb`].
     ///
     /// # Arguments
-    /// * `db_path` - Path to the `Manifest.db` file.
-    /// * `is_encrypted` - Whether the backup is encrypted.
-    /// * `manifest_key_data` - Raw manifest key bytes for encryption.
-    /// * `class_keys` - Map of unwrapped class keys.
-    /// * `_device_backup_path` - Folder context for temp files.
+    /// * `db_path` - Filesystem path to the `Manifest.db` file.
+    /// * `is_encrypted` - Indicates if the backup is encrypted.
+    /// * `manifest_key_data` - Optional raw key blob for `Manifest.db` decryption.
+    /// * `class_keys` - Unwrapped class keys for key bag decryption.
     ///
     /// # Errors
-    /// Returns `BackupError::ManifestDbNotFound` if file missing,
-    /// or `BackupError::Crypto`/`General` for decryption errors.
+    /// Returns [`BackupError::ManifestDbNotFound`] if the DB file is missing, or [`BackupError::Crypto`] on decryption errors.
     pub fn new(
         db_path: &Path,
         is_encrypted: bool,
         manifest_key_data: Option<&[u8]>,
         class_keys: &Option<HashMap<u32, ProtectionClassKey>>,
-        _device_backup_path: &Path, // Marked as unused
     ) -> Result<Self> {
         if !db_path.exists() {
             return Err(BackupError::ManifestDbNotFound);
@@ -91,13 +86,19 @@ impl ManifestDb {
         Ok(Self { decrypted_db_info })
     }
 
-    /// Consume `ManifestDb` and return the `DecryptedManifestDb` info.
+    /// Consume this [`ManifestDb` ]and return the underlying [`DecryptedManifestDb`] information.
     pub fn into_decrypted_db_info(self) -> DecryptedManifestDb {
         self.decrypted_db_info
     }
 }
 
-/// Query all domains from the open `Manifest.db` connection.
+/// Query all unique domains present in the `Manifest.db`.
+///
+/// # Arguments
+/// * `conn` - An open [`rusqlite::Connection`] to the manifest database.
+///
+/// # Errors
+/// Returns `BackupError::Database` on query failures.
 pub fn query_all_domains(conn: &Connection) -> Result<Vec<String>> {
     let mut stmt = conn.prepare(
         "SELECT DISTINCT
@@ -117,13 +118,13 @@ pub fn query_all_domains(conn: &Connection) -> Result<Vec<String>> {
     Ok(domains)
 }
 
-/// Query all file entries from the open `Manifest.db` connection.
+/// Query all file entries from the `Manifest.db`.
 ///
 /// # Arguments
 /// * `conn` - An open rusqlite `Connection`.
 ///
 /// # Errors
-/// Returns `BackupError::Database` if a query fails.
+/// Returns [`BackupError::Database`] if the `SQL` query or blob reading fails.
 pub fn query_all_files(conn: &Connection) -> Result<Vec<BackupFileEntry>> {
     let mut stmt =
         conn.prepare("SELECT rowid, fileID, domain, relativePath, flags, file FROM Files")?;
@@ -155,17 +156,17 @@ pub fn query_all_files(conn: &Connection) -> Result<Vec<BackupFileEntry>> {
     Ok(entries)
 }
 
-/// Query a single file entry by its relative path.
+/// Query a single file entry by its file ID in the `Manifest.db`.
 ///
 /// # Arguments
 /// * `conn` - An open rusqlite `Connection`.
-/// * `path` - The file's relative path within the backup.
+/// * `path` - The `fileID` to look up in the `Files` table.
 ///
 /// # Returns
-/// `Ok(Some(entry))` if found, `Ok(None)` if not.
+/// `Ok(Some(entry))` if found, `Ok(None)` if not found.
 ///
 /// # Errors
-/// Returns `BackupError::Database` if the query fails.
+/// Returns [`BackupError::Database`] on query failures.
 pub fn query_file_by_id(conn: &Connection, path: &str) -> Result<Option<BackupFileEntry>> {
     // Path in DB is typically Domain-RelativePath
     let mut stmt = conn.prepare(

@@ -9,9 +9,9 @@ This library is currently in an alpha state and should not be used in production
 ## Features
 
 - Load and parse the backup's `Manifest.plist` to obtain metadata, device info, and encryption parameters
-- Derive encryption keys using `PBKDF2-HMAC-SHA1` and unwrap protection class keys (`AES-KW`)
-- Decrypt and query the `AES-256` encrypted `Manifest.db` to represent backup file metadata
-- Retrieve and decrypt individual files by protection class
+- Derive encryption keys using `PBKDF2` (`HMAC-SHA256` then `HMAC-SHA1`) and unwrap protection class keys via AES Key Wrap (`RFC 3394`)
+- Decrypt and query the `AES-256` encrypted `Manifest.db`, exposing backup file metadata via `rusqlite`
+- Retrieve and decrypt individual files by protection class (per-file `AES-CBC` with `PKCS7` padding)
 - Cross-platform support for macOS, Windows, and Linux
 
 ## Installation
@@ -35,13 +35,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // List all files in the backup
     let entries = backup.get_backup_files_list()?;
-    for entry in entries {
+    for entry in &entries {
         println!("{} - {}/{}", entry.file_id, entry.domain, entry.relative_path);
     }
 
-    // Decrypt and read a specific file
-    let data = backup.get_file_decrypted_copy("Manifest.db")?;
-    println!("Read {} bytes", data.len());
+    // Get the path to the decrypted Manifest.db
+    let manifest_db = backup.get_manifest_db()?;
+    println!("Decrypted Manifest.db path: {:?}", manifest_db);
+
+    // Decrypt and read the first file entry in the backup
+    if let Some(entry) = entries.first() {
+        let data = backup.get_file_decrypted_copy(&entry.file_id)?;
+        println!("Decrypted {} ({} bytes)", entry.relative_path, data.len());
+    }
 
     Ok(())
 }

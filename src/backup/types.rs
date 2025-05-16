@@ -155,28 +155,31 @@ impl ManifestLockdownInfo {
     }
 }
 
+/// Represents the key bag from `Manifest.plist` containing encryption parameters and wrapped class keys.
 #[derive(Debug, Clone)]
 pub struct BackupKeyBag {
+    /// Bag type identifier (backup key bag version).
     pub bag_type: u32,
-    /// Identifier for the backup key bag.
+    /// Unique identifier for the backup key bag (`UUID` TLV field).
     pub uuid: Vec<u8>,
-    /// Optional wrap key for certain classes.
+    /// Optional wrap key blob for certain classes (TLV 'WRAP').
     pub wrap: Vec<u8>,
-    /// DPSL parameter for key derivation.
+    /// DPSL parameter for initial `PBKDF2` derivation (TLV 'DPSL').
     pub dpsl: Vec<u8>,
-    /// DPIC parameter for key derivation.
+    /// DPIC iteration count for initial `PBKDF2` derivation (TLV 'DPIC').
     pub dpic: u32,
-    /// Salt for PBKDF2 key derivation.
+    /// Salt for second `PBKDF2` derivation (TLV 'SALT').
     pub salt: Vec<u8>,
-    /// Number of iterations for PBKDF2.
+    /// Iteration count for second `PBKDF2` derivation (TLV 'ITER').
     pub iter: u32,
-    /// Other attributes (e.g., "KEY", "WPKY").
+    /// Other TLV attributes not explicitly parsed (raw tag-to-blob map).
     pub attrs: HashMap<[u8; 4], Vec<u8>>,
-    /// Map of protection class IDs to wrapped key data.
+    /// Map of protection class IDs to their wrapped key data.
     pub class_keys: HashMap<u32, ClassKeyData>,
 }
 
 impl BackupKeyBag {
+    /// Parse a raw backup key bag blob into a [`BackupKeyBag`], extracting TLV fields.
     pub fn from_bytes(blob: &[u8]) -> BackupKeyBag {
         let mut bag = BackupKeyBag {
             bag_type: 0,
@@ -243,7 +246,7 @@ impl BackupKeyBag {
     }
 }
 
-/// Data for a single protection class key entry.
+/// Contains wrapped key variants and metadata for a single protection class entry.
 #[derive(Debug, Clone)]
 pub struct ClassKeyData {
     /// Alternative WPKY if provided.
@@ -255,6 +258,7 @@ pub struct ClassKeyData {
 }
 
 impl ClassKeyData {
+    /// Build a [`ClassKeyData`] from a TLV attribute map.
     pub fn from_map(map: HashMap<[u8; 4], Vec<u8>>) -> ClassKeyData {
         // Prefer WPKY, fallback to PBKY for persistent key
         let wpky = map
@@ -269,7 +273,7 @@ impl ClassKeyData {
     }
 }
 
-/// In-memory manifest state: raw plist + keys.
+/// Holds in-memory parsed manifest (`Manifest.plist`) and associated decryption key and unwrapped class keys.
 #[derive(Debug, Clone)]
 pub struct ManifestData {
     /// Parsed `Manifest.plist` data.
@@ -280,16 +284,16 @@ pub struct ManifestData {
     pub unlocked_class_keys: Option<HashMap<u32, ProtectionClassKey>>,
 }
 
-/// Decrypted key for a specific protection class.
+/// Stores a decrypted `AES` key for a specific protection class.
 #[derive(Debug, Clone)]
 pub struct ProtectionClassKey {
     /// Numeric class identifier (e.g., 4).
     pub class_id: u32,
-    /// Raw decrypted AES key.
+    /// Raw decrypted `AES` key.
     pub key: Vec<u8>,
 }
 
-/// Holds information for opening the backup's `Manifest.db`.
+/// Holds information for opening a backup's `Manifest.db`, including file path and optional SQLCipher key.
 #[derive(Debug, Clone)]
 pub struct DecryptedManifestDb {
     /// Path to the SQLite database file.
@@ -303,7 +307,7 @@ pub struct DecryptedManifestDb {
 }
 
 impl DecryptedManifestDb {
-    /// Open a rusqlite `Connection`, applying SQLCipher key if needed.
+    /// Open a `SQLite` connection to the manifest database, applying SQLCipher key if needed.
     pub fn try_get_connection(&self) -> Result<rusqlite::Connection> {
         let conn = rusqlite::Connection::open(&self.db_path).map_err(BackupError::Database)?;
         if let Some(key) = &self.decryption_key {
@@ -325,23 +329,35 @@ impl DecryptedManifestDb {
     }
 }
 
+/// Metadata and cryptographic information for a single backup file entry.
 #[derive(Debug, Clone)]
 pub struct MBFile {
+    /// Last modification timestamp (seconds since `UNIX` epoch).
     pub last_modified: u64,
+    /// File flags as stored in the backup database.
     pub flags: u64,
+    /// Group ID (owner) of the file.
     pub group_id: i64,
+    /// Last status change timestamp (seconds since `UNIX` epoch).
     pub last_status_change: u64,
+    /// Creation (birth) timestamp (seconds since `UNIX` epoch).
     pub birth: u64,
+    /// File size in bytes.
     pub size: u64,
+    /// File mode/permission bits.
     pub mode: u64,
+    /// Optional user ID of the file owner.
     pub user_id: Option<u64>,
+    /// Inode number recorded in backup.
     pub inode_number: u64,
+    /// Protection class identifier for the file.
     pub protection_class: u32,
+    /// Optional wrapped encryption key blob (includes class in first 4 bytes).
     pub encryption_key: Option<Vec<u8>>,
 }
 
 impl MBFile {
-    /// Generate an instance from a NSKeyedArchiver blob.
+    /// Deserialize an `NSKeyedArchiver` blob into an `MBFile`, extracting file metadata and encryption info.
     pub fn from_plist(plist_data: Value) -> Result<MBFile> {
         // parse top-level dictionary
         let dict = plist_data.as_dictionary().ok_or_else(|| {
@@ -416,7 +432,7 @@ impl MBFile {
     }
 }
 
-/// Entry for a single file recorded in `Manifest.db`.
+/// Entry for a single file recorded in `Manifest.db`, including its ID, path, flags, and metadata.
 #[derive(Debug, Clone)]
 pub struct BackupFileEntry {
     /// Unique file identifier (SHA1 of domain+path).

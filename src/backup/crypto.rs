@@ -17,13 +17,14 @@ use sha2::Sha256; // For PBKDF2
 type Aes256CbcDec = cbc::Decryptor<Aes256>;
 type Aes256CbcEnc = cbc::Encryptor<Aes256>;
 
-/// Derive the 32-byte encryption key from a user password using PBKDF2-HMAC-SHA1.
+/// Derive the 32-byte encryption key from a user password using `PBKDF2`.
 ///
 /// # Arguments
 /// * `password` - User-supplied password bytes.
-/// * `_dpsl` - DPSL parameter (unused by PBKDF2).
-/// * `salt` - Salt from the backup key bag.
-/// * `iter` - Iteration count for PBKDF2.
+/// * `dpsl` - `DPSL` parameter from the key bag for first `PBKDF2` pass.
+/// * `dpic` - `DPIC` iteration count parameter for the first `PBKDF2` pass.
+/// * `salt` - Salt from the backup key bag for second `PBKDF2` pass.
+/// * `iter` - Iteration count for the second `PBKDF2` pass (`HMAC-SHA1`).
 ///
 /// # Returns
 /// A 32-byte key for use in AES-based decryption.
