@@ -16,11 +16,11 @@ This library is currently in an alpha state and should not be used in production
 
 ## Installation
 
-This library is available on [`crates.io`](https://crates.io/crates/crabapple)
+This library is available on [crates.io](https://crates.io/crates/crabapple).
 
 ## Documentation
 
-API documentation is available at [`docs.rs`](https://docs.rs/crabapple).
+Documentation is available on [docs.rs](https://docs.rs/crabapple).
 
 ## Quick Start
 
