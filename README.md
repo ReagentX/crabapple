@@ -40,7 +40,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Decrypt and read a specific file
-    let data = backup.get_file_decrypted_copy("MediaDomain", "Manifest.db")?;
+    let data = backup.get_file_decrypted_copy("Manifest.db")?;
     println!("Read {} bytes", data.len());
 
     Ok(())

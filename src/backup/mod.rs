@@ -6,8 +6,11 @@ pub mod manifest_db;
 pub mod types;
 pub mod util;
 
-use std::fs;
+use std::fs::{self, File};
+use std::io::Read;
 use std::path::{Path, PathBuf};
+
+use crypto::aes_kw_unwrap_bytes;
 
 use self::types::{Authentication, BackupFileEntry, DecryptedManifestDb, Manifest, ManifestData};
 use crate::error::{BackupError, Result};
@@ -190,47 +193,44 @@ impl Backup {
     ///
     /// # Errors
     /// Returns `BackupError` if lookup, decryption, or I/O fails.
-    pub fn get_file_decrypted_copy(&self, _domain: &str, relative_path: &str) -> Result<Vec<u8>> {
+    pub fn get_file_decrypted_copy(&self, file_id: &str) -> Result<Vec<u8>> {
         let db_info = self
             .decrypted_manifest_db
             .as_ref()
             .ok_or(BackupError::ManifestDbNotFound)?;
 
         let conn = db_info.try_get_connection()?;
-        let file_entry = manifest_db::query_file_by_path(&conn, relative_path)?
-            .ok_or_else(|| BackupError::FileNotFoundInBackup(relative_path.to_string()))?;
+        let file_entry = manifest_db::query_file(&conn, file_id)?
+            .ok_or_else(|| BackupError::FileNotFoundInBackup(file_id.to_string()))?;
 
         let source_file_path = self
             .backup_path
             .join(&file_entry.file_id[0..2])
             .join(&file_entry.file_id);
 
-        let file_data = fs::read(&source_file_path)?;
-        if self.is_encrypted() {
+        let mut db_bytes = File::open(source_file_path)?;
+        let mut file_data = Vec::new();
+        db_bytes.read_to_end(&mut file_data)?;
+
+        if let Some(encryption_key) = file_entry.metadata.encryption_key {
             let protection_class = file_entry.metadata.protection_class;
+            let (_, key_bytes) = encryption_key.split_at(4);
+
             let class_key_entry = self
                 .manifest_data
                 .unlocked_class_keys
                 .as_ref()
-                .and_then(|keys| keys.get(&protection_class)) // Class 4
+                .and_then(|keys| keys.get(&protection_class))
                 .ok_or_else(|| {
                     BackupError::Crypto(
-                        "Class {manifest_class} key not found, needed to decrypt Manifest.db key"
+                        "Class {protection_class} key not found, needed to decrypt file key"
                             .to_string(),
                     )
                 })?;
-            let wrapped_key = &class_key_entry.key;
 
-            let unlocked_keys =
-                self.manifest_data
-                    .unlocked_class_keys
-                    .as_ref()
-                    .ok_or_else(|| {
-                        BackupError::Crypto(
-                            "Unlocked class keys missing for encrypted backup".to_string(),
-                        )
-                    })?;
-            let file_key = unwrap_key_for_class(protection_class, wrapped_key, unlocked_keys)?;
+            let file_key = aes_kw_unwrap_bytes(&class_key_entry.key, key_bytes)
+                .map_err(|_| BackupError::KeyUnwrapFailed(class_key_entry.class_id))?;
+
             let plaintext = aes_decrypt_cbc_with_padding(&file_data, &file_key)?;
             Ok(plaintext)
         } else {

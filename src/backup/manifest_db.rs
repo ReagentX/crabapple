@@ -168,10 +168,10 @@ pub fn query_all_files(conn: &Connection) -> Result<Vec<BackupFileEntry>> {
 ///
 /// # Errors
 /// Returns `BackupError::Database` if the query fails.
-pub fn query_file_by_path(conn: &Connection, path: &str) -> Result<Option<BackupFileEntry>> {
+pub fn query_file(conn: &Connection, path: &str) -> Result<Option<BackupFileEntry>> {
     // Path in DB is typically Domain-RelativePath
     let mut stmt = conn.prepare(
-        "SELECT rowid, fileID, domain, relativePath, flags, file FROM Files WHERE relativePath = ?",
+        "SELECT rowid, fileID, domain, relativePath, flags, file FROM Files WHERE fileID = ?",
     )?;
     let mut rows = stmt.query([path])?;
     if let Some(row) = rows.next()? {

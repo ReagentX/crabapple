@@ -301,12 +301,13 @@ pub struct MBFile {
     pub user_id: Option<u64>,
     pub inode_number: u64,
     pub protection_class: u32,
+    pub encryption_key: Option<Vec<u8>>,
 }
 
 impl MBFile {
     /// Generate an instance from a NSKeyedArchiver blob.
     pub fn from_plist(plist_data: Value) -> Result<MBFile> {
-        let root_index = plist_data
+        let root_index: usize = plist_data
             .as_dictionary()
             .ok_or_else(|| BackupError::General("MBFile plist is not a dictionary".to_string()))?
             .get("$top")
@@ -319,17 +320,20 @@ impl MBFile {
             .unwrap()
             .get() as usize;
 
-        let top_dict = plist_data
+        let main_array = plist_data
             .as_dictionary()
             .ok_or_else(|| BackupError::General("MBFile plist is not a dictionary".to_string()))?
             .get("$objects")
             .unwrap()
             .as_array()
-            .unwrap()
-            .get(root_index)
-            .unwrap()
-            .as_dictionary()
             .unwrap();
+
+        let top_dict = main_array.get(root_index).unwrap().as_dictionary().unwrap();
+
+        // Find the encryption key, if present
+        let encryption_key_index = top_dict
+            .get("EncryptionKey")
+            .map(|v| v.as_uid().unwrap().get() as usize);
 
         Ok(Self {
             last_modified: top_dict
@@ -370,6 +374,18 @@ impl MBFile {
                 .unwrap()
                 .as_unsigned_integer()
                 .unwrap() as u32,
+            encryption_key: encryption_key_index.map(|e| {
+                let key = main_array
+                    .get(e)
+                    .unwrap()
+                    .as_dictionary()
+                    .unwrap()
+                    .get("NS.data")
+                    .unwrap()
+                    .as_data()
+                    .unwrap();
+                key.to_vec()
+            }),
         })
     }
 }
