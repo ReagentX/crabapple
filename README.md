@@ -2,6 +2,10 @@
 
 Crabapple is a Rust library for reading, inspecting, and extracting data from encrypted iOS backups created by Finder, Apple Devices, or iTunes.
 
+# ⚠️ Warning ⚠️
+
+This library is currently in an alpha state and should not be used in production code.
+
 ## Features
 
 - Load and parse the backup's `Manifest.plist` to obtain metadata, device info, and encryption parameters
