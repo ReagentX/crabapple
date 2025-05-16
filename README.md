@@ -4,11 +4,11 @@ Crabapple is a Rust library for reading, inspecting, and extracting data from en
 
 ## Features
 
-- Load and parse the backup's `Manifest.plist` to obtain metadata, device info, and encryption parameters.
-- Derive encryption keys using PBKDF2-HMAC-SHA1 and unwrap protection class keys (AES-KW).
-- Decrypt and query the SQLCipher-encrypted `Manifest.db` to list available files in the backup.
-- Retrieve and decrypt individual files by protection class.
-- Cross-platform support for macOS, Windows, and Linux default backup locations.
+- Load and parse the backup's `Manifest.plist` to obtain metadata, device info, and encryption parameters
+- Derive encryption keys using `PBKDF2-HMAC-SHA1` and unwrap protection class keys (`AES-KW`)
+- Decrypt and query the `AES-256` encrypted Manifest.db` to represent backup file metadata
+- Retrieve and decrypt individual files by protection class
+- Cross-platform support for macOS, Windows, and Linux
 
 ## Installation
 
