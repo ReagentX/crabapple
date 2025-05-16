@@ -16,7 +16,7 @@ This library is available on [`crates.io`](https://crates.io/crabapple)
 
 ## Documentation
 
-API documentation is available at [https://docs.rs/crabapple](https://docs.rs/crabapple).
+API documentation is available at [`docs.rs`](https://docs.rs/crabapple).
 
 ## Quick Start
 
