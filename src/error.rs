@@ -79,6 +79,9 @@ pub enum BackupError {
 
     /// Operating system is not supported for default backup path.
     UnsupportedOs(String),
+
+    /// Failed to parse MBFile NSKeyedArchiver plist.
+    PlistParseError(String),
 }
 
 /// Alias for a `Result` with this crate's `BackupError`.
@@ -136,6 +139,7 @@ impl fmt::Display for BackupError {
             ),
             BackupError::InvalidTlvData(msg) => write!(f, "Invalid TLV data: {}", msg),
             BackupError::UnsupportedOs(msg) => write!(f, "Unsupported OS: {}", msg),
+            BackupError::PlistParseError(msg) => write!(f, "MBFile plist parse error: {}", msg),
         }
     }
 }
