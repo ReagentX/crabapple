@@ -46,75 +46,47 @@ impl Manifest {
     /// # Errors
     /// Returns [`BackupError::General`] if the file cannot be opened or parsed.
     pub fn load<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let file = File::open(path.as_ref()).map_err(|e| {
-            BackupError::PlistParseError(format!(
-                "Failed to open Manifest.plist at {:?}: {}",
-                path.as_ref(),
-                e
-            ))
+        let path_ref = path.as_ref();
+        let file = File::open(path_ref)
+            .map_err(|_| BackupError::ManifestPlistNotFound(path_ref.display().to_string()))?;
+        let plist = Value::from_reader(file)?;
+        let dict = plist.as_dictionary().ok_or_else(|| {
+            BackupError::PlistParseError("Top-level plist is not a dictionary".into())
         })?;
-
-        // Deserialize directly into PlistInfo
-        // let file = File::open(&path).map_err(|_| {
-        //     BackupError::InvalidTlvData("Failed to open Manifest.plist".to_string())
-        // })?;
-
-        let plist = Value::from_reader(file)
-            .map_err(|_| BackupError::InvalidTlvData("Failed to parse file plist".to_string()))?;
-
-        let top_dict = plist
-            .as_dictionary()
-            .ok_or_else(|| BackupError::InvalidTlvData("plist is not a dictionary".to_string()))?;
-
-        let is_encrypted = top_dict
+        let is_encrypted = dict
             .get("IsEncrypted")
             .and_then(Value::as_boolean)
             .unwrap_or(false);
-
-        let bag = if is_encrypted {
-            let raw_key_bag = top_dict
+        let backup_key_bag = if is_encrypted {
+            let data = dict
                 .get("BackupKeyBag")
-                .unwrap()
+                .ok_or_else(|| BackupError::MissingPlistKey("BackupKeyBag".into()))?
                 .as_data()
-                .unwrap()
-                .to_vec();
-            Some(BackupKeyBag::from_bytes(&raw_key_bag))
+                .ok_or_else(|| BackupError::PlistParseError("BackupKeyBag is not data".into()))?;
+            Some(BackupKeyBag::from_bytes(data))
         } else {
             None
         };
-
-        // also ensure manifest_key was present…
-        if is_encrypted {
-            let _manifest_key = top_dict
+        let manifest_key = if is_encrypted {
+            let data = dict
                 .get("ManifestKey")
-                .unwrap()
+                .ok_or_else(|| BackupError::MissingPlistKey("ManifestKey".into()))?
                 .as_data()
-                .unwrap()
-                .to_vec();
-            // TODO: Safer checks!
-            // if manifest_key.is_none() {
-            //     return Err(BackupError::MissingPlistKey(
-            //         "ManifestKey is missing".into(),
-            //     ));
-            // }
-        }
-
-        let manifest = Self {
-            backup_key_bag: bag,
-            is_encrypted: top_dict.get("IsEncrypted").unwrap().as_boolean().unwrap(),
-            lockdown: ManifestLockdownInfo::from_plist(top_dict.get("Lockdown").unwrap().clone())
-                .unwrap(),
-            manifest_key: Some(
-                top_dict
-                    .get("ManifestKey")
-                    .unwrap()
-                    .as_data()
-                    .unwrap()
-                    .to_vec(),
-            ),
+                .ok_or_else(|| BackupError::PlistParseError("ManifestKey is not data".into()))?;
+            Some(data.to_vec())
+        } else {
+            None
         };
-
-        Ok(manifest)
+        let lockdown_val = dict
+            .get("Lockdown")
+            .ok_or_else(|| BackupError::MissingPlistKey("Lockdown".into()))?;
+        let lockdown = ManifestLockdownInfo::from_plist(lockdown_val.clone())?;
+        Ok(Manifest {
+            backup_key_bag,
+            is_encrypted,
+            lockdown,
+            manifest_key,
+        })
     }
 }
 
