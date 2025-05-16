@@ -98,6 +98,15 @@ mod tests {
     }
 
     #[test]
+    fn test_hex_decode_uppercase() {
+        // Uppercase hex should decode correctly
+        let data = vec![0u8, 0xAB, 0xCD, 0xEF];
+        let hex = "00ABCDEF";
+        let decoded = hex_decode(hex).unwrap();
+        assert_eq!(decoded, data);
+    }
+
+    #[test]
     fn test_tlv_blocks_roundtrip() {
         // Construct a TLV blob: tag "ABCD", length 3, value [1,2,3], then tag "EFGH", length 2, value [4,5]
         let mut blob = Vec::new();
@@ -116,5 +125,17 @@ mod tests {
         assert_eq!(&tag2, b"EFGH");
         assert_eq!(val2, vec![4, 5]);
         assert!(iter.next().is_none(), "Unexpected extra TLV block");
+    }
+
+    #[test]
+    fn test_tlv_blocks_incomplete_blob() {
+        // Blob with incomplete value (declared length longer than available)
+        let mut blob = Vec::new();
+        blob.extend(b"TAG1");
+        blob.extend(&5u32.to_be_bytes()); // length 5
+        blob.extend(&[1, 2]); // only 2 bytes present
+        let mut iter = tlv_blocks(&blob);
+        // Should not yield any blocks due to incomplete data
+        assert!(iter.next().is_none());
     }
 }

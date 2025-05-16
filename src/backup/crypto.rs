@@ -462,4 +462,44 @@ mod tests {
             _ => panic!("Expected InvalidCryptoDataLength with actual=24, expected=32"),
         }
     }
+
+    #[test]
+    fn test_derive_key_length_and_determinism() {
+        let password = b"password";
+        let dpsl = b"salt1";
+        let dpic = 2;
+        let salt = b"salt2";
+        let iter = 3;
+        let key1 = derive_key_from_password(password, dpsl, dpic, salt, iter).unwrap();
+        let key2 = derive_key_from_password(password, dpsl, dpic, salt, iter).unwrap();
+        // Key must be 32 bytes and deterministic
+        assert_eq!(key1.len(), 32);
+        assert_eq!(key1, key2);
+    }
+
+    #[test]
+    fn test_aes_encrypt_decrypt_empty_data() {
+        // AES-256 key of zeros
+        let key = vec![0u8; 32];
+        // Encrypt empty plaintext
+        let ciphertext = aes_encrypt_cbc_with_padding(&[], &key).unwrap();
+        // Even empty plaintext should produce one full block of padding
+        assert_eq!(ciphertext.len(), 16);
+        // Decrypt back
+        let plaintext = aes_decrypt_cbc_with_padding(&ciphertext, &key).unwrap();
+        assert_eq!(plaintext.len(), 0);
+    }
+
+    #[test]
+    fn test_aes_decrypt_trims_non_multiple_of_block_size() {
+        // Prepare a valid ciphertext for "hello"
+        let key = vec![0u8; 32];
+        let original = b"hello";
+        let mut ciphertext = aes_encrypt_cbc_with_padding(original, &key).unwrap();
+        // Append extra bytes that should be ignored
+        ciphertext.extend(&[0u8; 5]);
+        // Decrypt will truncate to a multiple of block size
+        let plaintext = aes_decrypt_cbc_with_padding(&ciphertext, &key).unwrap();
+        assert_eq!(plaintext, original);
+    }
 }
