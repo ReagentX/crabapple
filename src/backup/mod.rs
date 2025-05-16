@@ -207,6 +207,7 @@ impl Backup {
         db_bytes.read_to_end(&mut file_data)?;
 
         if let Some(encryption_key) = file_entry.metadata.encryption_key {
+            // TODO: Abstract this as a function like `decrypt_file()` somewhere
             let protection_class = file_entry.metadata.protection_class;
             let (_, key_bytes) = encryption_key.split_at(4);
 

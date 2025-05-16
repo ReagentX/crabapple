@@ -93,17 +93,17 @@ impl Manifest {
 /// Device metadata from the backup's `Manifest.plist`.
 #[derive(Debug, Clone)]
 pub struct ManifestLockdownInfo {
-    /// iOS build version (e.g., "18E199").
+    /// iOS build version (e.g., `"18E199"`).
     pub build_version: String,
     /// Human-readable device name.
     pub device_name: String,
-    /// Device product type (e.g., "iPhone9,4").
+    /// Device product type (e.g., `"iPhone9,4"`).
     pub product_type: String,
-    /// iOS version (e.g., "15.5").
+    /// iOS version (e.g., `"15.5"`).
     pub product_version: String,
     /// Device serial number.
     pub serial_number: String,
-    /// Unique device identifier (UDID).
+    /// Unique device identifier (`UDID`).
     pub unique_device_id: String,
 }
 
@@ -278,7 +278,7 @@ impl ClassKeyData {
 pub struct ManifestData {
     /// Parsed `Manifest.plist` data.
     pub manifest: Manifest,
-    /// Derived decryption key (32 bytes) if encrypted.
+    /// Derived decryption key (`32` bytes) if encrypted.
     pub main_decryption_key: Option<Vec<u8>>,
     /// Unwrapped per-class keys after decryption.
     pub unlocked_class_keys: Option<HashMap<u32, ProtectionClassKey>>,
@@ -287,7 +287,7 @@ pub struct ManifestData {
 /// Stores a decrypted `AES` key for a specific protection class.
 #[derive(Debug, Clone)]
 pub struct ProtectionClassKey {
-    /// Numeric class identifier (e.g., 4).
+    /// Numeric class identifier
     pub class_id: u32,
     /// Raw decrypted `AES` key.
     pub key: Vec<u8>,

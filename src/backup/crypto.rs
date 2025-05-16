@@ -1,4 +1,4 @@
-//! Cryptographic routines for key derivation (PBKDF2), AES key wrap/unwrap, and CBC encryption/decryption.
+//! Cryptographic routines for key derivation (`PBKDF2`), `AES` key wrap/unwrap, and `CBC` encryption/decryption.
 
 use crate::backup::types::{Manifest, ProtectionClassKey};
 use crate::error::{BackupError, Result};

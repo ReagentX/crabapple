@@ -68,9 +68,6 @@ pub enum BackupError {
     /// Could not determine the user home directory for path expansion.
     HomeDirNotFound,
 
-    /// Environment variable expansion in a path failed.
-    PathExpansionError(String),
-
     /// Invalid TLV data encountered.
     InvalidTlvData(String),
 
@@ -128,11 +125,6 @@ impl fmt::Display for BackupError {
             BackupError::HomeDirNotFound => {
                 write!(f, "Could not determine home directory to expand path")
             }
-            BackupError::PathExpansionError(path) => write!(
-                f,
-                "Failed to expand environment variables in path: {}",
-                path
-            ),
             BackupError::InvalidTlvData(msg) => write!(f, "Invalid TLV data: {}", msg),
             BackupError::UnsupportedOs(msg) => write!(f, "Unsupported OS: {}", msg),
             BackupError::PlistParseError(msg) => write!(f, "MBFile plist parse error: {}", msg),

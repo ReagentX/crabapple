@@ -1,4 +1,4 @@
-//! Module for loading, decrypting, and querying the Manifest.db of an iOS backup.
+//! Module for loading, decrypting, and querying the `Manifest.db` of an iOS backup.
 
 use plist::Value;
 use rusqlite::Connection;
@@ -49,6 +49,7 @@ impl ManifestDb {
                 )
             })?;
 
+            // TODO: Abstract this as a function like `decrypt_file()` somewhere
             let (class_bytes, key_bytes) = manifest_key_bytes.split_at(4);
             let manifest_class = u32::from_le_bytes(class_bytes.try_into().unwrap());
 
@@ -66,6 +67,7 @@ impl ManifestDb {
 
             let decrypted_manifest_db = aes_decrypt_cbc_with_padding(&buffer, &key)?;
 
+            // TODO: Open the database in memory
             let mut file = File::create("/tmp/decrypted.db")?;
             file.write_all(&decrypted_manifest_db)?;
 
