@@ -74,8 +74,6 @@ pub fn unlock_keys_from_manifest(
         .ok_or_else(|| BackupError::Crypto("BackupKeyBag not found in PlistInfo".to_string()))?;
 
     for (class_id, class_key_data) in &key_bag.class_keys {
-        println!("Processing class ID: {}", class_id);
-        println!("Class key data: {:#?}", class_key_data);
         // Skip classes without WPKY
         let wpky = match &class_key_data.wpky {
             Some(w) => w,
