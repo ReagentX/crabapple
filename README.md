@@ -16,7 +16,7 @@ This library is currently in an alpha state and should not be used in production
 
 ## Installation
 
-This library is available on [`crates.io`](https://crates.io/crabapple)
+This library is available on [`crates.io`](https://crates.io/crates/crabapple)
 
 ## Documentation
 
