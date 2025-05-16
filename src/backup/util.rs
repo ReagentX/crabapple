@@ -96,4 +96,25 @@ mod tests {
             _ => panic!("Expected HexDecode error"),
         }
     }
+
+    #[test]
+    fn test_tlv_blocks_roundtrip() {
+        // Construct a TLV blob: tag "ABCD", length 3, value [1,2,3], then tag "EFGH", length 2, value [4,5]
+        let mut blob = Vec::new();
+        blob.extend(b"ABCD");
+        blob.extend(&3u32.to_be_bytes());
+        blob.extend(&[1, 2, 3]);
+        blob.extend(b"EFGH");
+        blob.extend(&2u32.to_be_bytes());
+        blob.extend(&[4, 5]);
+
+        let mut iter = tlv_blocks(&blob);
+        let (tag1, val1) = iter.next().expect("First TLV block missing");
+        assert_eq!(&tag1, b"ABCD");
+        assert_eq!(val1, vec![1, 2, 3]);
+        let (tag2, val2) = iter.next().expect("Second TLV block missing");
+        assert_eq!(&tag2, b"EFGH");
+        assert_eq!(val2, vec![4, 5]);
+        assert!(iter.next().is_none(), "Unexpected extra TLV block");
+    }
 }

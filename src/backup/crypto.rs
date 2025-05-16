@@ -376,4 +376,90 @@ mod tests {
         let unwrapped = unwrap_key_for_class(class_id, &wrapped, &keys).unwrap();
         assert_eq!(unwrapped, file_key);
     }
+
+    #[test]
+    fn test_aes_kw_unwrap_errors() {
+        // Wrapped data too short
+        let kek = vec![0u8; 16];
+        let short_data = vec![0u8; 8];
+        let err = aes_kw_unwrap_bytes(&kek, &short_data).unwrap_err();
+        match err {
+            BackupError::Crypto(msg) => assert!(msg.contains("too short")),
+            _ => panic!("Expected Crypto error for short data"),
+        }
+        // Invalid KEK length
+        let invalid_kek = vec![0u8; 10];
+        let wrapped = vec![0u8; 16];
+        let err2 = aes_kw_unwrap_bytes(&invalid_kek, &wrapped).unwrap_err();
+        match err2 {
+            BackupError::Crypto(msg) => assert!(msg.contains("Invalid KEK length")),
+            _ => panic!("Expected Crypto error for invalid KEK length"),
+        }
+    }
+
+    #[test]
+    fn test_wrap_and_unwrap_roundtrip() {
+        let plain = b"secret12";
+        for &kek_len in &[16usize, 24, 32] {
+            let kek_bytes = vec![0x55u8; kek_len];
+            // Wrap
+            let mut wrapped = vec![0u8; plain.len() + 8];
+            match kek_len {
+                16 => {
+                    let kek = Kek::<Aes128>::new(GenericArray::from_slice(&kek_bytes));
+                    kek.wrap(plain, &mut wrapped).expect("Wrap failed");
+                }
+                24 => {
+                    let kek = Kek::<Aes192>::new(GenericArray::from_slice(&kek_bytes));
+                    kek.wrap(plain, &mut wrapped).expect("Wrap failed");
+                }
+                32 => {
+                    let kek = Kek::<Aes256>::new(GenericArray::from_slice(&kek_bytes));
+                    kek.wrap(plain, &mut wrapped).expect("Wrap failed");
+                }
+                _ => unreachable!(),
+            }
+            let unwrapped = aes_kw_unwrap_bytes(&kek_bytes, &wrapped).expect("Unwrap failed");
+            assert_eq!(unwrapped, plain);
+        }
+    }
+
+    #[test]
+    fn test_aes_encrypt_invalid_key_length() {
+        let data = b"hello";
+        // key too short
+        let short_key = vec![0u8; 16];
+        let err = aes_encrypt_cbc_with_padding(data, &short_key).unwrap_err();
+        match err {
+            BackupError::InvalidCryptoDataLength {
+                actual,
+                expected: _,
+            } => assert_eq!(actual, 16),
+            _ => panic!("Expected InvalidCryptoDataLength for short key"),
+        }
+        // key too long
+        let long_key = vec![0u8; 64];
+        let err2 = aes_encrypt_cbc_with_padding(data, &long_key).unwrap_err();
+        match err2 {
+            BackupError::InvalidCryptoDataLength {
+                actual,
+                expected: _,
+            } => assert_eq!(actual, 64),
+            _ => panic!("Expected InvalidCryptoDataLength for long key"),
+        }
+    }
+
+    #[test]
+    fn test_aes_decrypt_invalid_key_length() {
+        let cipher = vec![0u8; 16];
+        let short_key = vec![0u8; 24];
+        let err = aes_decrypt_cbc_with_padding(&cipher, &short_key).unwrap_err();
+        match err {
+            BackupError::InvalidCryptoDataLength { actual, expected } => {
+                assert_eq!(actual, 24);
+                assert_eq!(expected, 32);
+            }
+            _ => panic!("Expected InvalidCryptoDataLength with actual=24, expected=32"),
+        }
+    }
 }
