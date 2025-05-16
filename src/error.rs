@@ -65,9 +65,6 @@ pub enum BackupError {
     /// Padding error encountered during decryption.
     PaddingError,
 
-    /// Date parsing from plist failed.
-    DateParse(chrono::ParseError),
-
     /// Could not determine the user home directory for path expansion.
     HomeDirNotFound,
 
@@ -128,7 +125,6 @@ impl fmt::Display for BackupError {
                 expected, actual
             ),
             BackupError::PaddingError => write!(f, "Padding error during decryption"),
-            BackupError::DateParse(err) => write!(f, "Date parsing error: {}", err),
             BackupError::HomeDirNotFound => {
                 write!(f, "Could not determine home directory to expand path")
             }
@@ -151,7 +147,6 @@ impl std::error::Error for BackupError {
             BackupError::Plist(err) => Some(err),
             BackupError::Database(err) => Some(err),
             BackupError::Utf8(err) => Some(err),
-            BackupError::DateParse(err) => Some(err),
             _ => None,
         }
     }
@@ -179,11 +174,5 @@ impl From<rusqlite::Error> for BackupError {
 impl From<std::string::FromUtf8Error> for BackupError {
     fn from(err: std::string::FromUtf8Error) -> Self {
         BackupError::Utf8(err)
-    }
-}
-
-impl From<chrono::ParseError> for BackupError {
-    fn from(err: chrono::ParseError) -> Self {
-        BackupError::DateParse(err)
     }
 }

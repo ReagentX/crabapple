@@ -62,13 +62,9 @@ impl Backup {
             ));
         }
 
-        let plist_modification_time = fs::metadata(&manifest_plist)?.modified()?;
-        let backup_date = chrono::DateTime::<chrono::Utc>::from(plist_modification_time);
-
         // 1. Load Manifest.plist and extract necessary keys and info
         // This call now correctly uses types::PlistInfo::load, as PlistInfo is imported from self::type
-        let mut manifest = Manifest::load(&manifest_plist)?;
-        manifest.backup_date = Some(backup_date); // Set the backup date from file metadata
+        let manifest = Manifest::load(&manifest_plist)?;
 
         let (main_decryption_key_opt, unlocked_class_keys_opt) = if manifest.is_encrypted {
             let bkb = manifest.backup_key_bag.as_ref().ok_or_else(|| {
@@ -134,11 +130,6 @@ impl Backup {
             .ok_or_else(|| BackupError::InvalidBackupRoot(self.backup_path.display().to_string()))
     }
 
-    /// Returns the backup date from the manifest metadata, if present.
-    pub fn backup_date(&self) -> Option<chrono::DateTime<chrono::Utc>> {
-        self.manifest_data.manifest.backup_date
-    }
-
     /// Returns device metadata from `Manifest.plist`.
     pub fn device_info(&self) -> &types::ManifestLockdownInfo {
         &self.manifest_data.manifest.lockdown
@@ -200,7 +191,7 @@ impl Backup {
             .ok_or(BackupError::ManifestDbNotFound)?;
 
         let conn = db_info.try_get_connection()?;
-        let file_entry = manifest_db::query_file(&conn, file_id)?
+        let file_entry = manifest_db::query_file_by_id(&conn, file_id)?
             .ok_or_else(|| BackupError::FileNotFoundInBackup(file_id.to_string()))?;
 
         let source_file_path = self

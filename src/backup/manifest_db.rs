@@ -131,7 +131,6 @@ pub fn query_all_files(conn: &Connection) -> Result<Vec<BackupFileEntry>> {
     let mut rows = stmt.query([])?;
     let mut entries = Vec::new();
     while let Some(row) = rows.next()? {
-
         let file_id = row.get(0)?;
 
         let blob = conn
@@ -168,7 +167,7 @@ pub fn query_all_files(conn: &Connection) -> Result<Vec<BackupFileEntry>> {
 ///
 /// # Errors
 /// Returns `BackupError::Database` if the query fails.
-pub fn query_file(conn: &Connection, path: &str) -> Result<Option<BackupFileEntry>> {
+pub fn query_file_by_id(conn: &Connection, path: &str) -> Result<Option<BackupFileEntry>> {
     // Path in DB is typically Domain-RelativePath
     let mut stmt = conn.prepare(
         "SELECT rowid, fileID, domain, relativePath, flags, file FROM Files WHERE fileID = ?",

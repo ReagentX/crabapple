@@ -1,6 +1,5 @@
 //! Type definitions for iOS backup metadata structures, authentication, and file entries.
 
-use chrono::{DateTime, Utc};
 use plist::Value;
 use serde::Deserialize;
 use std::fs::File;
@@ -43,9 +42,6 @@ pub struct Manifest {
     /// Optional raw manifest key (typically 40 bytes) used for Manifest.db decryption.
     #[serde(with = "serde_bytes", default)]
     pub manifest_key: Option<ByteBuf>,
-    /// Date when the backup was created (populated post-load).
-    #[serde(skip)]
-    pub backup_date: Option<DateTime<Utc>>,
 }
 
 impl Manifest {
@@ -208,7 +204,6 @@ impl BackupKeyBag {
 
 /// Data for a single protection class key entry.
 #[derive(Debug, Deserialize, Clone)]
-#[serde(rename_all = "PascalCase")]
 pub struct ClassKeyData {
     /// Alternative WPKY if provided.
     pub wpky: Option<Vec<u8>>,
