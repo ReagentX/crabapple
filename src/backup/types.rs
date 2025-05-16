@@ -61,7 +61,7 @@ impl Manifest {
     /// Returns [`BackupError::General`] if the file cannot be opened or parsed.
     pub fn load<P: AsRef<Path>>(path: P) -> Result<Self> {
         let file = File::open(path.as_ref()).map_err(|e| {
-            BackupError::General(format!(
+            BackupError::PlistParseError(format!(
                 "Failed to open Manifest.plist at {:?}: {}",
                 path.as_ref(),
                 e
@@ -69,8 +69,9 @@ impl Manifest {
         })?;
 
         // Deserialize directly into PlistInfo
-        let mut manifest: Manifest = ::plist::from_reader(BufReader::new(file))
-            .map_err(|e| BackupError::General(format!("Failed to parse Manifest.plist: {}", e)))?;
+        let mut manifest: Manifest = ::plist::from_reader(BufReader::new(file)).map_err(|e| {
+            BackupError::PlistParseError(format!("Failed to parse Manifest.plist: {}", e))
+        })?;
 
         // If encrypted, unpack that CFData blob
         if manifest.is_encrypted {
@@ -307,85 +308,75 @@ pub struct MBFile {
 impl MBFile {
     /// Generate an instance from a NSKeyedArchiver blob.
     pub fn from_plist(plist_data: Value) -> Result<MBFile> {
-        let root_index: usize = plist_data
-            .as_dictionary()
-            .ok_or_else(|| BackupError::General("MBFile plist is not a dictionary".to_string()))?
+        // parse top-level dictionary
+        let dict = plist_data.as_dictionary().ok_or_else(|| {
+            BackupError::PlistParseError("MBFile plist is not a dictionary".into())
+        })?;
+        let root_uid = dict
             .get("$top")
-            .unwrap()
-            .as_dictionary()
-            .unwrap()
-            .get("root")
-            .unwrap()
-            .as_uid()
-            .unwrap()
-            .get() as usize;
-
-        let main_array = plist_data
-            .as_dictionary()
-            .ok_or_else(|| BackupError::General("MBFile plist is not a dictionary".to_string()))?
+            .and_then(Value::as_dictionary)
+            .and_then(|d| d.get("root"))
+            .and_then(Value::as_uid)
+            .map(|u| u.get() as usize)
+            .ok_or_else(|| BackupError::MissingPlistKey("Missing root UID".into()))?;
+        let objects = dict
             .get("$objects")
-            .unwrap()
-            .as_array()
-            .unwrap();
+            .and_then(Value::as_array)
+            .ok_or_else(|| BackupError::MissingPlistKey("Missing $objects array".into()))?;
+        let top_dict = objects
+            .get(root_uid)
+            .and_then(Value::as_dictionary)
+            .ok_or_else(|| BackupError::PlistParseError("Top object is not a dictionary".into()))?;
 
-        let top_dict = main_array.get(root_index).unwrap().as_dictionary().unwrap();
+        // helper functions for extracting values
+        let get = |key: &str| {
+            top_dict
+                .get(key)
+                .ok_or_else(|| BackupError::MissingPlistKey(format!("Missing key {}", key)))
+        };
+        let get_uint = |key: &str| {
+            get(key)?.as_unsigned_integer().ok_or_else(|| {
+                BackupError::MissingPlistKey(format!("Invalid unsigned integer for {}", key))
+            })
+        };
+        let get_int = |key: &str| {
+            get(key)?.as_signed_integer().ok_or_else(|| {
+                BackupError::MissingPlistKey(format!("Invalid signed integer for {}", key))
+            })
+        };
 
-        // Find the encryption key, if present
-        let encryption_key_index = top_dict
-            .get("EncryptionKey")
-            .map(|v| v.as_uid().unwrap().get() as usize);
+        // optional encryption key
+        let encryption_key = if let Some(uid_val) =
+            top_dict.get("EncryptionKey").and_then(Value::as_uid)
+        {
+            let idx = uid_val.get() as usize;
+            let data_dict = objects
+                .get(idx)
+                .and_then(Value::as_dictionary)
+                .ok_or_else(|| {
+                    BackupError::PlistParseError("EncryptionKey object is not a dictionary".into())
+                })?;
+            let data = data_dict
+                .get("NS.data")
+                .and_then(Value::as_data)
+                .ok_or_else(|| BackupError::PlistParseError("NS.data missing".into()))?;
+            Some(data.to_vec())
+        } else {
+            None
+        };
 
-        Ok(Self {
-            last_modified: top_dict
-                .get("LastModified")
-                .unwrap()
-                .as_unsigned_integer()
-                .unwrap(),
-            flags: top_dict
-                .get("Flags")
-                .unwrap()
-                .as_unsigned_integer()
-                .unwrap(),
-            group_id: top_dict
-                .get("GroupID")
-                .unwrap()
-                .as_signed_integer()
-                .unwrap(),
-            last_status_change: top_dict
-                .get("LastStatusChange")
-                .unwrap()
-                .as_unsigned_integer()
-                .unwrap(),
-            birth: top_dict
-                .get("Birth")
-                .unwrap()
-                .as_unsigned_integer()
-                .unwrap(),
-            size: top_dict.get("Size").unwrap().as_unsigned_integer().unwrap(),
-            mode: top_dict.get("Mode").unwrap().as_unsigned_integer().unwrap(),
-            user_id: top_dict.get("UserID").unwrap().as_unsigned_integer(),
-            inode_number: top_dict
-                .get("InodeNumber")
-                .unwrap()
-                .as_unsigned_integer()
-                .unwrap(),
-            protection_class: top_dict
-                .get("ProtectionClass")
-                .unwrap()
-                .as_unsigned_integer()
-                .unwrap() as u32,
-            encryption_key: encryption_key_index.map(|e| {
-                let key = main_array
-                    .get(e)
-                    .unwrap()
-                    .as_dictionary()
-                    .unwrap()
-                    .get("NS.data")
-                    .unwrap()
-                    .as_data()
-                    .unwrap();
-                key.to_vec()
-            }),
+        Ok(MBFile {
+            last_modified: get_uint("LastModified")?,
+            flags: get_uint("Flags")?,
+            group_id: get_int("GroupID")?,
+            last_status_change: get_uint("LastStatusChange")?,
+            birth: get_uint("Birth")?,
+            size: get_uint("Size")?,
+            mode: get_uint("Mode")?,
+            user_id: top_dict.get("UserID").and_then(Value::as_unsigned_integer),
+            inode_number: get_uint("InodeNumber")?,
+            protection_class: get_uint("ProtectionClass")? as u32,
+            encryption_key,
         })
     }
 }
