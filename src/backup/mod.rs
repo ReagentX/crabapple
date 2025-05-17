@@ -328,10 +328,11 @@ impl Backup {
     ///     &Authentication::Password("pass".into())
     /// ).unwrap();
     ///
-    /// let data = backup.get_file_decrypted_copy("41ee3469300471004e6d526ebd09c051c19f8a39").unwrap();
+    /// let data = backup.decrypt_file_from_id("41ee3469300471004e6d526ebd09c051c19f8a39").unwrap();
     /// println!("Decrypted data length: {}", data.len());
     /// ```
-    pub fn get_file_decrypted_copy(&self, file_id: &str) -> Result<Vec<u8>> {
+    // TODO: Remove this?
+    pub fn decrypt_file_from_id(&self, file_id: &str) -> Result<Vec<u8>> {
         let file_entry = self.get_file(file_id)?;
         self.decrypt_entry(&file_entry)
     }

@@ -24,7 +24,7 @@ Documentation is available on [docs.rs](https://docs.rs/crabapple).
 
 ## Quick Start
 
-```rust ,no_run
+```rust,no_run
 use std::{io::copy, fs::File};
 use crabapple::{Backup, Authentication};
 
@@ -50,7 +50,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Alternatively, decrypt and read a file entry into memory
     if let Some(entry) = entries.get(2) {
-        let data = backup.get_file_decrypted_copy(&entry.file_id)?;
+        let data = backup.decrypt_entry(&entry)?;
         println!("Decrypted {} ({} bytes)", entry.relative_path, data.len());
     }
 
@@ -62,7 +62,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 You can retrieve device metadata (like device name, iOS version, and UDID) without opening the full backup database:
 
-```rust ,no_run
+```rust,no_run
 use crabapple::get_device_basic_info;
 use std::path::Path;
 
@@ -79,7 +79,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 If you have already derived the encryption key elsewhere, provide it directly:
 
-```rust ,no_run
+```rust,no_run
 use crabapple::{Backup, Authentication};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -96,7 +96,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 `crabapple` uses a custom `BackupError` enum for error reporting. You can match on specific cases:
 
-```rust ,no_run
+```rust,no_run
 use crabapple::{Backup, Authentication, BackupError};
 
 match Backup::new("/bad/path", &Authentication::Password("pass".into())) {
