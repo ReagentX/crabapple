@@ -49,6 +49,54 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+### Getting Basic Device Information
+
+You can retrieve device metadata (like device name, iOS version, and UDID) without opening the full backup database:
+
+```rust ,no_run
+use crabapple::get_device_basic_info;
+use std::path::Path;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let udid_folder = Path::new("/Users/you/Library/Application Support/MobileSync/Backup/DEVICE_UDID");
+    let info = get_device_basic_info(udid_folder)?;
+    println!("Device: {} (iOS {})", info.device_name, info.product_version);
+    println!("UDID: {}", info.unique_device_id);
+    Ok(())
+}
+```
+
+### Using a Pre-derived Key
+
+If you have already derived the encryption key elsewhere, provide it directly:
+
+```rust ,no_run
+use crabapple::{Backup, Authentication};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let udid_folder = "/path/to/backup";
+    let hex_key = "abcdef0123456789...";
+    let auth = Authentication::DerivedKey(hex_key.to_string());
+    let backup = Backup::new(udid_folder, &auth)?;
+    // ... proceed as normal
+    Ok(())
+}
+```
+
+### Error Handling
+
+`crabapple` uses a custom `BackupError` enum for error reporting. You can match on specific cases:
+
+```rust ,no_run
+use crabapple::{Backup, Authentication, BackupError};
+
+match Backup::new("/bad/path", &Authentication::Password("pass".into())) {
+    Ok(b) => println!("Loaded backup successfully"),
+    Err(BackupError::ManifestPlistNotFound(path)) => eprintln!("Missing Manifest.plist: {}", path),
+    Err(err) => eprintln!("Error initializing backup: {}", err),
+}
+```
+
 ## Crabapple Tree
 
 ![My Crabapple Tree](/resources/crabapple.png)
