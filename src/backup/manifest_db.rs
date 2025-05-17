@@ -5,7 +5,7 @@ use rusqlite::Connection;
 use std::collections::HashSet;
 use std::fs::File;
 use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::{
     backup::{
@@ -92,15 +92,16 @@ impl ManifestDb {
 
             let decrypted_manifest_db = aes_decrypt_cbc_with_padding(&buffer, &key)?;
 
-            // TODO: Open the database in memory
-            let mut file = File::create("/tmp/Manifest.db")?;
+            // Write decrypted Manifest.db into the platform-specific temporary directory
+            let tmp_path = std::env::temp_dir().join("crabapple-Manifest.db");
+            let mut file = File::create(&tmp_path)?;
             file.write_all(&decrypted_manifest_db)?;
 
             DecryptedManifestDb {
-                db_path: PathBuf::from("/tmp/Manifest.db"),
-                is_temporary: false, // Original DB path
+                db_path: tmp_path,
+                is_temporary: true,
                 connection_string: db_path.to_string_lossy().into_owned(), // Path for direct open
-                decryption_key: Some(hex_encode(&key)), // Key for SQLCipher
+                decryption_key: Some(hex_encode(&key)),                    // Key for SQLCipher
             }
         } else {
             DecryptedManifestDb {
