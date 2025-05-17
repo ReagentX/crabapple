@@ -39,7 +39,7 @@ pub struct Backup {
     /// Decrypted manifest database handle, if available.
     decrypted_manifest_db: DecryptedManifestDb,
     /// Connection to the manifest database
-    db: Connection,
+    pub db: Connection,
 }
 
 impl Backup {
@@ -289,7 +289,7 @@ impl Backup {
     /// ).unwrap();
     ///
     /// let entry = backup.get_file("41ee3469300471004e6d526ebd09c051c19f8a39").unwrap();
-    /// println!("File domain: {}", entry.metadata.domain);
+    /// println!("File encryption key: {:?}", entry.metadata.encryption_key);
     /// ```
     pub fn get_file(&self, file_id: &str) -> Result<BackupFileEntry> {
         manifest_db::query_file_by_id(&self.db, file_id)?

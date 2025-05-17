@@ -15,7 +15,7 @@ use super::lockdown::ManifestLockdownInfo;
 /// # Examples
 ///
 /// ```no_run
-/// use crabapple::backup::models::manifest_data::{Manifest, ManifestData};
+/// use crabapple::backup::models::manifest_data::manifest::{Manifest, ManifestData};
 /// use std::path::Path;
 ///
 /// // Load the manifest
@@ -51,17 +51,6 @@ impl ManifestData {
     ///
     /// # Errors
     /// Returns [`BackupError::Crypto`] if no class keys available.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use crabapple::backup::models::manifest_data::ManifestData;
-    ///
-    /// let keys = data.keys().unwrap();
-    /// for (cid, key) in keys {
-    ///     println!("Class {} key length {}", cid, key.key.len());
-    /// }
-    /// ```
     pub fn keys(&self) -> Result<&HashMap<u32, ProtectionClassKey>> {
         self.unlocked_class_keys.as_ref().ok_or_else(|| {
             BackupError::Crypto("Missing class keys for encrypted backup".to_string())
@@ -97,7 +86,7 @@ impl Manifest {
     /// # Examples
     ///
     /// ```no_run
-    /// use crabapple::backup::models::manifest_data::Manifest;
+    /// use crabapple::backup::models::manifest_data::manifest::Manifest;
     /// use std::path::Path;
     ///
     /// let manifest = Manifest::load(Path::new("/path/to/Manifest.plist")).unwrap();

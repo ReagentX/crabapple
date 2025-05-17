@@ -15,7 +15,7 @@ pub struct FileKey {
 }
 
 impl FileKey {
-    fn new(key: Vec<u8>) -> Self {
+    pub fn new(key: Vec<u8>) -> Self {
         FileKey { key }
     }
 
