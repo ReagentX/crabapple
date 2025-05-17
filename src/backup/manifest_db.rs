@@ -4,12 +4,12 @@ use plist::Value;
 use rusqlite::Connection;
 use std::collections::HashSet;
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::copy;
 use std::path::Path;
 
 use crate::{
     backup::{
-        crypto::{aes_decrypt_cbc_with_padding, aes_kw_unwrap_bytes},
+        crypto::{aes_decrypt_cbc_reader, aes_kw_unwrap_bytes},
         models::{
             file::{BackupFileEntry, MBFile},
             manifest_data::database::DecryptedManifestDb,
@@ -56,10 +56,6 @@ impl ManifestDb {
             return Err(BackupError::ManifestDbNotFound);
         }
 
-        let mut db_bytes = File::open(db_path)?;
-        let mut buffer = Vec::new();
-        db_bytes.read_to_end(&mut buffer)?;
-
         let decrypted_db_info = if manifest_data.manifest.is_encrypted {
             let manifest_key_bytes =
                 manifest_data
@@ -90,12 +86,14 @@ impl ManifestDb {
             let key = aes_kw_unwrap_bytes(&class_key_entry.key, key_bytes)
                 .map_err(|_| BackupError::KeyUnwrapFailed(manifest_class))?;
 
-            let decrypted_manifest_db = aes_decrypt_cbc_with_padding(&buffer, &key)?;
+            // Decrypt the Manifest.db using the unwrapped key
+            let db_bytes = File::open(db_path)?;
+            let mut decrypted_manifest_db_stream = aes_decrypt_cbc_reader(&db_bytes, &key)?;
 
             // Write decrypted Manifest.db into the platform-specific temporary directory
             let tmp_path = std::env::temp_dir().join("crabapple-Manifest.db");
             let mut file = File::create(&tmp_path)?;
-            file.write_all(&decrypted_manifest_db)?;
+            copy(&mut decrypted_manifest_db_stream, &mut file)?;
 
             DecryptedManifestDb {
                 db_path: tmp_path,

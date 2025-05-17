@@ -1,4 +1,6 @@
 //! File metadata and cryptographic information for backup entries.
+use std::path::PathBuf;
+
 use plist::Value;
 
 use crate::{
@@ -156,4 +158,10 @@ pub struct BackupFileEntry {
     pub flags: u32,
     /// Metadata and cryptographic information for the file entry.
     pub metadata: MBFile,
+}
+
+impl BackupFileEntry {
+    pub fn source(&self) -> PathBuf {
+        PathBuf::from(&self.file_id[0..2]).join(&self.file_id)
+    }
 }

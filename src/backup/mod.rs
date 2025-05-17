@@ -7,8 +7,7 @@ pub mod models;
 pub(crate) mod util;
 
 use std::collections::HashSet;
-use std::fs::read;
-
+use std::fs::{File, read};
 use std::path::{Path, PathBuf};
 
 use crypto::aes_kw_unwrap_bytes;
@@ -380,5 +379,55 @@ impl Backup {
         } else {
             Ok(data)
         }
+    }
+
+    /// Decrypt a file stream using AES-256-CBC with PKCS7 padding.
+    ///
+    /// # Arguments
+    /// * `ciphertext` - A reader over the encrypted file bytes.
+    ///
+    /// # Returns
+    /// A streaming reader implementing `std::io::Read` that yields plaintext as it's read.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use crabapple::{Backup, Authentication};
+    /// use std::{fs::File, io::copy};
+    ///
+    /// # fn main() -> crabapple::error::Result<()> {
+    ///     let backup = Backup::new(
+    ///         "/path/to/backup",
+    ///         &Authentication::Password("pass".into()),
+    ///     )?;
+    ///    
+    ///     let file = backup.get_file("41ee3469300471004e6d526ebd09c051c19f8a39")?;
+    ///     let mut reader = backup.decrypt_entry_stream(&file)?;
+    ///     let mut plain = Vec::new();
+    ///     copy(&mut reader, &mut plain)?;
+    ///     Ok(())
+    /// }
+    /// ```
+    pub fn decrypt_entry_stream(
+        &self,
+        entry: &BackupFileEntry,
+    ) -> Result<crypto::AesCbcDecryptReader<File>> {
+        let ciphertext = File::open(self.backup_path.join(entry.source()))?;
+
+        if let Some(encryption_key) = &entry.metadata.encryption_key {
+            let (_, key_bytes) = encryption_key.get_class_key();
+
+            let class_key_entry = self
+                .manifest_data
+                .get_class_key(entry.metadata.protection_class)?;
+
+            let key = aes_kw_unwrap_bytes(&class_key_entry.key, key_bytes)
+                .map_err(|_| BackupError::KeyUnwrapFailed(class_key_entry.class_id))?;
+
+            return crypto::aes_decrypt_cbc_reader(ciphertext, &key);
+        }
+        Err(BackupError::KeyUnwrapFailed(
+            entry.metadata.protection_class,
+        ))
     }
 }
