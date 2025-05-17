@@ -31,7 +31,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize a backup session for a device UDID with a password
     let udid_folder = "/Users/you/Library/Application Support/MobileSync/Backup/DEVICE_UDID";
     let auth = Authentication::Password("your_password".into());
-    let backup = Backup::new(udid_folder, auth)?;
+    let backup = Backup::new(udid_folder, &auth)?;
 
     // List all files in the backup
     let entries = backup.get_backup_files_list()?;
