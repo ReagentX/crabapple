@@ -20,7 +20,7 @@ pub fn hex_decode(hex_string: &str) -> Result<Vec<u8>> {
         .step_by(2)
         .map(|i| u8::from_str_radix(&hex_string[i..i + 2], 16))
         .collect::<std::result::Result<Vec<u8>, _>>()
-        .map_err(|e| BackupError::HexDecode(format!("Invalid hex character: {}", e)))
+        .map_err(|e| BackupError::HexDecode(format!("Invalid hex character: {e}")))
 }
 
 /// Encode a slice of bytes as a lowercase hexadecimal string.
@@ -31,8 +31,9 @@ pub fn hex_decode(hex_string: &str) -> Result<Vec<u8>> {
 ///
 /// # Returns
 /// A `String` of hex digits (two chars per input byte).
+#[must_use]
 pub fn hex_encode(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{:02x}", b)).collect()
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 #[cfg(test)]

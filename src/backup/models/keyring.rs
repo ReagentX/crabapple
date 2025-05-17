@@ -29,6 +29,7 @@ pub struct BackupKeyBag {
 
 impl BackupKeyBag {
     /// Parse a raw backup key bag blob into a [`BackupKeyBag`], extracting TLV fields.
+    #[must_use]
     pub fn from_bytes(blob: &[u8]) -> BackupKeyBag {
         let mut bag = BackupKeyBag {
             bag_type: 0,
@@ -108,6 +109,7 @@ pub struct ClassKeyData {
 
 impl ClassKeyData {
     /// Build a [`ClassKeyData`] from a TLV attribute map.
+    #[must_use]
     pub fn from_map(map: HashMap<[u8; 4], Vec<u8>>) -> ClassKeyData {
         // Prefer WPKY, fallback to PBKY for persistent key
         let wpky = map

@@ -62,7 +62,7 @@ impl Manifest {
         };
         let manifest_key = if is_encrypted {
             let data = get_key_as_data(dict, "ManifestKey")?;
-            Some(data.to_vec())
+            Some(data.clone())
         } else {
             None
         };

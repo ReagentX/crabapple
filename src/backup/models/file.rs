@@ -53,11 +53,9 @@ impl MBFile {
             .and_then(Value::as_array)
             .ok_or_else(|| BackupError::MissingPlistKey("Missing $objects array".into()))?;
 
-        let top_dict = as_dictionary(
-            objects
-                .get(root_uid)
-                .ok_or_else(|| BackupError::PlistParseError("Could not resolve MBFile Dictionary".into()))?
-        )?;
+        let top_dict = as_dictionary(objects.get(root_uid).ok_or_else(|| {
+            BackupError::PlistParseError("Could not resolve MBFile Dictionary".into())
+        })?)?;
 
         // optional encryption key
         let encryption_key = if let Some(uid_val) =
@@ -72,7 +70,7 @@ impl MBFile {
                 })?;
 
             let data = get_key_as_data(data_dict, "NS.data")?;
-            Some(data.to_vec())
+            Some(data.clone())
         } else {
             None
         };

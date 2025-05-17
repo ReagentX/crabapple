@@ -129,15 +129,13 @@ pub fn unwrap_key_for_class(
 ) -> Result<Vec<u8>> {
     let class_key_entry = unlocked_class_keys.get(&class_id).ok_or_else(|| {
         BackupError::Crypto(format!(
-            "Protection class {} key not found in unlocked keys",
-            class_id
+            "Protection class {class_id} key not found in unlocked keys"
         ))
     })?;
     let class_key_bytes = class_key_entry.key.as_slice();
     // Use helper to unwrap file key
-    aes_kw_unwrap_bytes(class_key_bytes, wrapped_file_key).map_err(|_| {
-        BackupError::Crypto(format!("Failed to unwrap file key for class {}", class_id))
-    })
+    aes_kw_unwrap_bytes(class_key_bytes, wrapped_file_key)
+        .map_err(|_| BackupError::Crypto(format!("Failed to unwrap file key for class {class_id}")))
 }
 
 /// Decrypt data using AES-256 CBC with PKCS7 padding and a zero IV.
@@ -185,7 +183,7 @@ pub fn aes_decrypt_cbc_with_padding(
 
     let pt_len = cipher
         .decrypt_padded_mut::<Pkcs7>(&mut buf)
-        .map_err(|e| BackupError::Crypto(format!("AES CBC decryption error (padding): {:?}", e)))?
+        .map_err(|e| BackupError::Crypto(format!("AES CBC decryption error (padding): {e:?}")))?
         .len();
 
     buf.truncate(pt_len);
@@ -226,7 +224,7 @@ pub fn aes_encrypt_cbc_with_padding(
 
     let ct_len = cipher
         .encrypt_padded_mut::<Pkcs7>(&mut buffer, data.len())
-        .map_err(|e| BackupError::Crypto(format!("AES CBC encryption error (padding): {:?}", e)))?
+        .map_err(|e| BackupError::Crypto(format!("AES CBC encryption error (padding): {e:?}")))?
         .len();
 
     buffer.truncate(ct_len);

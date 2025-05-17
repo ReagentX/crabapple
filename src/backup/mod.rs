@@ -45,7 +45,7 @@ impl Backup {
     /// # Arguments
     ///
     /// * `backup_path` - Filesystem path to a specific device backup folder (the UDID directory).
-    /// * `auth` - BackupAuth specifying password or derived key.
+    /// * `auth` - `BackupAuth` specifying password or derived key.
     ///
     /// # Errors
     /// Returns `BackupError` if paths are invalid, manifest loading fails, or decryption fails.
@@ -111,7 +111,7 @@ impl Backup {
             .manifest
             .manifest_key
             .as_ref()
-            .map(|buf| buf.as_ref());
+            .map(std::convert::AsRef::as_ref);
 
         let manifest_db_obj = ManifestDb::new(
             &device_backup_path.join("Manifest.db"),
@@ -139,16 +139,19 @@ impl Backup {
     }
 
     /// Returns device metadata from `Manifest.plist`.
+    #[must_use]
     pub fn lockdown(&self) -> &ManifestLockdownInfo {
         &self.manifest_data.manifest.lockdown
     }
 
     /// Indicates whether the backup is encrypted.
+    #[must_use]
     pub fn is_encrypted(&self) -> bool {
         self.manifest_data.manifest.is_encrypted
     }
 
     /// Returns the main decryption key as a hex string, if the backup is encrypted.
+    #[must_use]
     pub fn get_decryption_key_hex(&self) -> Option<String> {
         self.manifest_data
             .main_decryption_key
@@ -248,11 +251,13 @@ impl Backup {
     }
 
     /// Retrieve the raw 32-byte decryption key, if available.
+    #[must_use]
     pub fn get_decryption_key(&self) -> Option<Vec<u8>> {
         self.manifest_data.main_decryption_key.clone()
     }
 
     /// Access parsed `Manifest.plist` metadata.
+    #[must_use]
     pub fn manifest(&self) -> &Manifest {
         &self.manifest_data.manifest
     }

@@ -92,6 +92,7 @@ impl ManifestDb {
     }
 
     /// Consume this [`ManifestDb` ]and return the underlying [`DecryptedManifestDb`] information.
+    #[must_use]
     pub fn into_decrypted_db_info(self) -> DecryptedManifestDb {
         self.decrypted_db_info
     }

@@ -14,7 +14,7 @@ pub enum BackupError {
     /// Failed to parse a property list (plist).
     Plist(plist::Error),
 
-    /// SQLite database error (e.g., opening or querying Manifest.db).
+    /// `SQLite` database error (e.g., opening or querying Manifest.db).
     Database(rusqlite::Error),
 
     /// Cryptographic operation failed, with a descriptive message.
@@ -74,7 +74,7 @@ pub enum BackupError {
     /// Operating system is not supported for default backup path.
     UnsupportedOs(String),
 
-    /// Failed to parse MBFile NSKeyedArchiver plist.
+    /// Failed to parse `MBFile` `NSKeyedArchiver` plist.
     PlistParseError(String),
 }
 
@@ -84,50 +84,49 @@ pub type Result<T> = std::result::Result<T, BackupError>;
 impl fmt::Display for BackupError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            BackupError::Io(err) => write!(f, "IO error: {}", err),
-            BackupError::Plist(err) => write!(f, "Plist parsing error: {}", err),
-            BackupError::Database(err) => write!(f, "SQLite database error: {}", err),
-            BackupError::Crypto(msg) => write!(f, "Cryptography error: {}", msg),
+            BackupError::Io(err) => write!(f, "IO error: {err}"),
+            BackupError::Plist(err) => write!(f, "Plist parsing error: {err}"),
+            BackupError::Database(err) => write!(f, "SQLite database error: {err}"),
+            BackupError::Crypto(msg) => write!(f, "Cryptography error: {msg}"),
             BackupError::NotEncrypted => write!(f, "Backup is not encrypted"),
             BackupError::PasswordOrKeyRequired => write!(
                 f,
                 "Password or derived key is required for encrypted backups"
             ),
             BackupError::ManifestPlistNotFound(path) => {
-                write!(f, "Manifest.plist not found at {}", path)
+                write!(f, "Manifest.plist not found at {path}")
             }
             BackupError::ManifestDbNotFound => {
                 write!(f, "Manifest.db not found or could not be decrypted")
             }
             BackupError::FileNotFoundInBackup(path) => {
-                write!(f, "File not found in backup: {}", path)
+                write!(f, "File not found in backup: {path}")
             }
-            BackupError::InvalidBackupRoot(path) => write!(f, "Invalid backup root: {}", path),
-            BackupError::DeviceNotFound(udid) => write!(f, "Device not found: {}", udid),
-            BackupError::HexDecode(msg) => write!(f, "Hex decoding error: {}", msg),
-            BackupError::Utf8(err) => write!(f, "UTF-8 conversion error: {}", err),
+            BackupError::InvalidBackupRoot(path) => write!(f, "Invalid backup root: {path}"),
+            BackupError::DeviceNotFound(udid) => write!(f, "Device not found: {udid}"),
+            BackupError::HexDecode(msg) => write!(f, "Hex decoding error: {msg}"),
+            BackupError::Utf8(err) => write!(f, "UTF-8 conversion error: {err}"),
             BackupError::UnsupportedVersion(version) => {
-                write!(f, "Feature not supported for this iOS version: {}", version)
+                write!(f, "Feature not supported for this iOS version: {version}")
             }
-            BackupError::General(msg) => write!(f, "General backup error: {}", msg),
+            BackupError::General(msg) => write!(f, "General backup error: {msg}"),
             BackupError::MissingPlistKey(key) => {
-                write!(f, "Missing required key in Manifest.plist: {}", key)
+                write!(f, "Missing required key in Manifest.plist: {key}")
             }
             BackupError::KeyUnwrapFailed(class_id) => {
-                write!(f, "Key unwrapping failed for class {}", class_id)
+                write!(f, "Key unwrapping failed for class {class_id}")
             }
             BackupError::InvalidCryptoDataLength { expected, actual } => write!(
                 f,
-                "Invalid data length for cryptographic operation: expected {}, got {}",
-                expected, actual
+                "Invalid data length for cryptographic operation: expected {expected}, got {actual}"
             ),
             BackupError::PaddingError => write!(f, "Padding error during decryption"),
             BackupError::HomeDirNotFound => {
                 write!(f, "Could not determine home directory to expand path")
             }
-            BackupError::InvalidTlvData(msg) => write!(f, "Invalid TLV data: {}", msg),
-            BackupError::UnsupportedOs(msg) => write!(f, "Unsupported OS: {}", msg),
-            BackupError::PlistParseError(msg) => write!(f, "MBFile plist parse error: {}", msg),
+            BackupError::InvalidTlvData(msg) => write!(f, "Invalid TLV data: {msg}"),
+            BackupError::UnsupportedOs(msg) => write!(f, "Unsupported OS: {msg}"),
+            BackupError::PlistParseError(msg) => write!(f, "MBFile plist parse error: {msg}"),
         }
     }
 }
