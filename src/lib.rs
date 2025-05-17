@@ -9,10 +9,10 @@ pub mod error;
 pub use backup::Backup;
 
 /// File entry representation in the backup database, including metadata and encryption info.
-pub use crate::backup::types::BackupFileEntry;
+pub use crate::backup::models::file::BackupFileEntry;
 
 /// Authentication options for encrypted backups: either a password or a pre-derived key.
-pub use backup::types::Authentication;
+pub use backup::models::auth::Authentication;
 
 /// Retrieve basic device metadata from a given backup folder UDID.
 pub use backup::device::get_device_basic_info;

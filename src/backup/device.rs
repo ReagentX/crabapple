@@ -1,8 +1,9 @@
 //! Device helper functions for listing device backups and retrieving basic device information.
 
-use crate::backup::types::{ManifestLockdownInfo, Manifest};
 use crate::error::{BackupError, Result};
 use std::path::Path;
+
+use super::models::manifest_data::{lockdown::ManifestLockdownInfo, manifest::Manifest};
 
 /// Get basic device metadata for a specific UDID.
 ///

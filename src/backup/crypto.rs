@@ -1,17 +1,19 @@
 //! Cryptographic routines for key derivation (`PBKDF2`), `AES` key wrap/unwrap, and `CBC` encryption/decryption.
 
-use crate::backup::types::{Manifest, ProtectionClassKey};
 use crate::error::{BackupError, Result};
 use std::collections::HashMap;
 
 use aes::cipher::{
     BlockDecryptMut, BlockEncryptMut, KeyIvInit, block_padding::Pkcs7, generic_array::GenericArray,
 };
-use aes::{Aes128, Aes192, Aes256}; // Import all AES variants
+use aes::{Aes128, Aes192, Aes256};
 use aes_kw::Kek;
 use pbkdf2::pbkdf2_hmac;
-use sha1::Sha1; // For PBKDF2
-use sha2::Sha256; // For PBKDF2
+use sha1::Sha1;
+use sha2::Sha256;
+
+use super::models::keyring::ProtectionClassKey;
+use super::models::manifest_data::manifest::Manifest;
 
 // Define CBC mode for AES-256
 type Aes256CbcDec = cbc::Decryptor<Aes256>;

@@ -7,9 +7,12 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
-use crate::backup::crypto::{aes_decrypt_cbc_with_padding, aes_kw_unwrap_bytes}; // For decrypting DB if needed
-use crate::backup::types::{BackupFileEntry, DecryptedManifestDb, MBFile, ProtectionClassKey};
-use crate::backup::util;
+use crate::BackupFileEntry;
+use crate::backup::crypto::{aes_decrypt_cbc_with_padding, aes_kw_unwrap_bytes};
+use crate::backup::models::file::MBFile;
+use crate::backup::models::keyring::ProtectionClassKey;
+use crate::backup::models::manifest_data::database::DecryptedManifestDb;
+use crate::backup::util::hex::hex_encode;
 use crate::error::{BackupError, Result};
 
 /// Represents the backup's `Manifest.db`, decrypted if necessary, and holds decryption info.
@@ -75,7 +78,7 @@ impl ManifestDb {
                 db_path: PathBuf::from("/tmp/decrypted.db"),
                 is_temporary: false, // Original DB path
                 connection_string: db_path.to_string_lossy().into_owned(), // Path for direct open
-                decryption_key: Some(util::hex_encode(&key)), // Key for SQLCipher
+                decryption_key: Some(hex_encode(&key)), // Key for SQLCipher
             }
         } else {
             DecryptedManifestDb {

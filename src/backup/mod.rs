@@ -3,7 +3,7 @@
 pub mod crypto;
 pub mod device;
 pub mod manifest_db;
-pub mod types;
+pub mod models;
 pub mod util;
 
 use std::fs::File;
@@ -11,15 +11,20 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use crypto::aes_kw_unwrap_bytes;
+use manifest_db::ManifestDb;
+use models::file::BackupFileEntry;
+use models::manifest_data::database::DecryptedManifestDb;
+use models::manifest_data::lockdown::ManifestLockdownInfo;
+use models::manifest_data::manifest::{Manifest, ManifestData};
+use util::hex::{hex_decode, hex_encode};
 
-use self::types::{Authentication, BackupFileEntry, DecryptedManifestDb, Manifest, ManifestData};
+use crate::Authentication;
 use crate::error::{BackupError, Result};
 
 use self::crypto::{
     aes_decrypt_cbc_with_padding, derive_key_from_password, unlock_keys_from_manifest,
     unwrap_key_for_class,
 };
-use self::manifest_db::ManifestDb;
 
 /// Main entry point for working with an iOS backup.
 ///
@@ -82,7 +87,7 @@ impl Backup {
                     &bkb.salt,
                     bkb.iter,
                 )?,
-                Authentication::DerivedKey(ref key_hex) => util::hex_decode(key_hex)?,
+                Authentication::DerivedKey(ref key_hex) => hex_decode(key_hex)?,
             };
 
             let unlocked_keys_map = unlock_keys_from_manifest(&main_derived_key, &manifest)?;
@@ -134,7 +139,7 @@ impl Backup {
     }
 
     /// Returns device metadata from `Manifest.plist`.
-    pub fn device_info(&self) -> &types::ManifestLockdownInfo {
+    pub fn lockdown(&self) -> &ManifestLockdownInfo {
         &self.manifest_data.manifest.lockdown
     }
 
@@ -148,7 +153,7 @@ impl Backup {
         self.manifest_data
             .main_decryption_key
             .as_ref()
-            .map(|v| util::hex_encode(v))
+            .map(|v| hex_encode(v))
     }
 
     /// Get all of the domains in the backup.
@@ -277,8 +282,7 @@ impl Backup {
                 .ok_or_else(|| {
                     BackupError::Crypto(format!(
                         "Class {} key not found, needed to decrypt {} key",
-                        entry.metadata.protection_class,
-                        entry.file_id
+                        entry.metadata.protection_class, entry.file_id
                     ))
                 })?;
             let wrapped_key = &class_key_entry.key;
