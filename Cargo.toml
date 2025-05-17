@@ -1,0 +1,22 @@
+[package]
+authors = ["Christopher Sardegna <imessage@reagentx.net>"]
+name = "crabapple"
+version = "0.0.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+description = "A library for iOS backup decryption and encryption"
+exclude = [".github", "resources"]
+readme = "README.md"
+repository = "https://github.com/ReagentX/crabapple"
+keywords = ["ios", "cryptography", "backup"]
+categories = ["cryptography", "security", "database"]
+
+[dependencies]
+aes = "0.8.4"
+plist = "1.7.1"
+aes-kw = "0.2.1"
+pbkdf2 = { version = "0.12.2", features = ["simple", "hmac"] }
+rusqlite = { version = "0.35.0", features = ["bundled", "blob"] }
+cbc = "0.1.2"
+sha1 = "0.10.6"
+sha2 = "0.10.9"
