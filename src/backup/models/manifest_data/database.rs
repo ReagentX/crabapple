@@ -18,7 +18,13 @@ pub struct DecryptedManifestDb {
 }
 
 impl DecryptedManifestDb {
-    /// Open a `SQLite` connection to the manifest database, applying `SQLCipher` key if needed.
+    /// Open a `SQLite` connection to the manifest database.
+    ///
+    /// # Returns
+    /// A [`rusqlite::Connection`] to the database file specified by `db_path`.
+    ///
+    /// # Errors
+    /// Returns [`BackupError::Database`] if opening the connection fails.
     pub fn try_get_connection(&self) -> Result<rusqlite::Connection> {
         rusqlite::Connection::open(&self.db_path).map_err(BackupError::Database)
     }

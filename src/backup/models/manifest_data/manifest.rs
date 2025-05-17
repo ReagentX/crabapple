@@ -1,4 +1,4 @@
-//! Backup Manifest representation and parsing
+//! Backup Manifest representation and parsing.
 
 use plist::Value;
 use std::path::Path;

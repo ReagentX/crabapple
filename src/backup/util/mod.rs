@@ -1,3 +1,5 @@
-pub mod hex;
-pub mod plist;
-pub mod tlv;
+//! Utilities for working with backups.
+
+pub(crate) mod hex;
+pub(crate) mod plist;
+pub(crate) mod tlv;

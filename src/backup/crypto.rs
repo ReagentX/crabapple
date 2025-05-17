@@ -19,7 +19,7 @@ use super::models::manifest_data::manifest::Manifest;
 type Aes256CbcDec = cbc::Decryptor<Aes256>;
 type Aes256CbcEnc = cbc::Encryptor<Aes256>;
 
-/// Derive the 32-byte encryption key from a user password using `PBKDF2`.
+/// Derive the `32`-byte encryption key from a user password using `PBKDF2`.
 ///
 /// # Arguments
 /// * `password` - User-supplied password bytes.
@@ -29,10 +29,10 @@ type Aes256CbcEnc = cbc::Encryptor<Aes256>;
 /// * `iter` - Iteration count for the second `PBKDF2` pass (`HMAC-SHA1`).
 ///
 /// # Returns
-/// A 32-byte key for use in AES-based decryption.
+/// A `32`-byte key for use in `AES`-based decryption.
 ///
 /// # Errors
-/// Never fails unless PBKDF2 implementation panics.
+/// Never fails unless `PBKDF2` implementation panics.
 pub fn derive_key_from_password(
     password: &[u8],
     dpsl: &[u8],
@@ -56,7 +56,7 @@ pub fn derive_key_from_password(
 /// * `plist_info` - Parsed `Manifest.plist` containing `backup_key_bag`.
 ///
 /// # Returns
-/// A map of class ID to its unwrapped AES key.
+/// A map of class ID to its unwrapped `AES` key.
 ///
 /// # Errors
 /// Returns `BackupError::Crypto` or `KeyUnwrapFailed` if unwrapping fails.
@@ -121,7 +121,7 @@ pub fn unlock_keys_from_manifest(
 /// The raw file key bytes.
 ///
 /// # Errors
-/// `BackupError::Crypto` if unwrapping fails.
+/// [`BackupError::Crypto`] if unwrapping fails.
 pub fn unwrap_key_for_class(
     class_id: u32,
     wrapped_file_key: &[u8],
@@ -138,7 +138,7 @@ pub fn unwrap_key_for_class(
         .map_err(|_| BackupError::Crypto(format!("Failed to unwrap file key for class {class_id}")))
 }
 
-/// Decrypt data using AES-256 CBC with PKCS7 padding and a zero IV.
+/// Decrypt data using `AES-256 CBC` with `PKCS7` padding and a zero IV.
 ///
 /// # Arguments
 /// * `data` - Encrypted ciphertext bytes.
@@ -148,7 +148,7 @@ pub fn unwrap_key_for_class(
 /// The decrypted plaintext bytes.
 ///
 /// # Errors
-/// Returns `BackupError::Crypto` or `InvalidCryptoDataLength` on failure.
+/// Returns [`BackupError::Crypto`] or [`BackupError::InvalidCryptoDataLength`] on failure.
 pub fn aes_decrypt_cbc_with_padding(
     data: &[u8], // ciphertext
     key: &[u8],
@@ -190,17 +190,17 @@ pub fn aes_decrypt_cbc_with_padding(
     Ok(buf)
 }
 
-/// Encrypt data using AES-256 CBC with PKCS7 padding and a zero IV.
+/// Encrypt data using `AES-256 CBC` with `PKCS7` padding and a zero IV.
 ///
 /// # Arguments
 /// * `data` - Plaintext bytes.
-/// * `key` - 32-byte AES key.
+/// * `key` - `32`-byte AES key.
 ///
 /// # Returns
 /// The ciphertext bytes.
 ///
 /// # Errors
-/// Returns `BackupError::Crypto` or `InvalidCryptoDataLength` on failure.
+/// Returns [`BackupError::Crypto`] or [`BackupError::InvalidCryptoDataLength`] on failure.
 #[allow(dead_code)]
 pub fn aes_encrypt_cbc_with_padding(
     data: &[u8], // plaintext
@@ -234,14 +234,14 @@ pub fn aes_encrypt_cbc_with_padding(
 /// Internal helper to unwrap AES Key Wrap (RFC 3394) based on key length.
 ///
 /// # Arguments
-/// * `kek_bytes` - Key Encryption Key (must be 16, 24, or 32 bytes).
-/// * `wrapped_data` - Wrapped key data (must be at least 8 bytes).
+/// * `kek_bytes` - Key Encryption Key (must be `16`, `24`, or `32` bytes).
+/// * `wrapped_data` - Wrapped key data (must be at least `8` bytes).
 ///
 /// # Returns
 /// The unwrapped key data.
 ///
 /// # Errors
-/// Returns `BackupError::Crypto` if the unwrapping fails.
+/// Returns [`BackupError::Crypto`] if the unwrapping fails.
 pub(crate) fn aes_kw_unwrap_bytes(kek_bytes: &[u8], wrapped_data: &[u8]) -> Result<Vec<u8>> {
     if wrapped_data.len() <= 8 {
         return Err(BackupError::Crypto(format!(

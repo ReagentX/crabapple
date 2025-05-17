@@ -1,5 +1,15 @@
-/// Iterate over a TLV‐encoded blob: 4‐byte tag, 4‐byte big‐endian length, then `length` bytes of value.
-pub fn tlv_blocks(blob: &[u8]) -> impl Iterator<Item = ([u8; 4], Vec<u8>)> + '_ {
+//! Tag-Length-Value encoding utilities.
+
+/// Iterate through a `TLV‐encoded` blob, yielding tag-value pairs.
+///
+/// Each block consists of a `4`-byte tag, a `4`-byte big-endian length, followed by value bytes of that length.
+///
+/// # Arguments
+/// * `blob` - Byte slice containing TLV-encoded data.
+///
+/// # Returns
+/// An iterator yielding `(tag, value)` tuples, where `tag` is a `4`-byte identifier and `value` is the associated data.
+pub(crate) fn tlv_blocks(blob: &[u8]) -> impl Iterator<Item = ([u8; 4], Vec<u8>)> + '_ {
     struct Iter<'a> {
         data: &'a [u8],
         pos: usize,

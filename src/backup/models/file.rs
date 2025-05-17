@@ -102,6 +102,6 @@ pub struct BackupFileEntry {
     pub relative_path: String,
     /// File flags as stored in the database.
     pub flags: u32,
-    /// Protection class ID.
+    /// Metadata and cryptographic information for the file entry.
     pub metadata: MBFile,
 }

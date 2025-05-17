@@ -4,7 +4,7 @@ pub mod crypto;
 pub mod device;
 pub mod manifest_db;
 pub mod models;
-pub mod util;
+pub(crate) mod util;
 
 use std::fs::File;
 use std::io::Read;
@@ -159,7 +159,14 @@ impl Backup {
             .map(|v| hex_encode(v))
     }
 
-    /// Get all of the domains in the backup.
+    /// Get all domains present in the backup's manifest database.
+    ///
+    /// # Returns
+    /// A [`Vec<String>`] containing each unique domain present in the backup.
+    ///
+    /// # Errors
+    /// Returns [`BackupError::ManifestDbNotFound`] if the manifest database is unavailable,
+    /// or [`BackupError::Database`] if the database query fails.
     pub fn query_all_domains(&self) -> Result<Vec<String>> {
         let db_info = self
             .decrypted_manifest_db
@@ -168,6 +175,35 @@ impl Backup {
 
         let conn = db_info.try_get_connection()?;
         manifest_db::query_all_domains(&conn)
+    }
+
+    /// Get the filesystem path to the decrypted (or raw) `Manifest.db` file.
+    ///
+    /// # Returns
+    /// A [`PathBuf`] pointing to the location of the manifest database file.
+    ///
+    /// # Errors
+    /// Returns [`BackupError::ManifestDbNotFound`] if the manifest database information is missing.
+    pub fn get_manifest_db(&self) -> Result<PathBuf> {
+        let info = self
+            .decrypted_manifest_db
+            .as_ref()
+            .ok_or(BackupError::ManifestDbNotFound)?;
+        Ok(info.db_path.clone())
+    }
+
+    /// List unique protection domains present in the backup.
+    ///
+    /// # Returns
+    /// A [`HashSet<String>`] of all distinct file domains recorded in the backup.
+    ///
+    /// # Errors
+    /// Returns [`BackupError::ManifestDbNotFound`] if the manifest database is unavailable,
+    /// or [`BackupError::Database`] if opening the database connection fails.
+    pub fn list_domains(&self) -> Result<std::collections::HashSet<String>> {
+        let files = self.get_backup_files_list()?;
+        let domains = files.into_iter().map(|e| e.domain).collect();
+        Ok(domains)
     }
 
     /// List all files recorded in `Manifest.db`.
@@ -241,15 +277,6 @@ impl Backup {
         }
     }
 
-    /// Get the filesystem path to the decrypted (or raw) `Manifest.db` file.
-    pub fn get_manifest_db(&self) -> Result<PathBuf> {
-        let info = self
-            .decrypted_manifest_db
-            .as_ref()
-            .ok_or(BackupError::ManifestDbNotFound)?;
-        Ok(info.db_path.clone())
-    }
-
     /// Retrieve the raw 32-byte decryption key, if available.
     #[must_use]
     pub fn get_decryption_key(&self) -> Option<Vec<u8>> {
@@ -303,13 +330,6 @@ impl Backup {
         } else {
             Ok(data)
         }
-    }
-
-    /// List unique protection domains present in the backup.
-    pub fn list_domains(&self) -> Result<std::collections::HashSet<String>> {
-        let files = self.get_backup_files_list()?;
-        let domains = files.into_iter().map(|e| e.domain).collect();
-        Ok(domains)
     }
 
     /// Open and return a rusqlite [`rusqlite::Connection`] to the decrypted (or raw) `Manifest.db`.

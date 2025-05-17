@@ -1,3 +1,5 @@
+//! Hexadecimal encoding and decoding functions.
+
 use crate::Result;
 use crate::error::BackupError;
 
@@ -8,8 +10,8 @@ use crate::error::BackupError;
 /// * `hex_string` - String slice containing hex characters (even length).
 ///
 /// # Errors
-/// Returns `BackupError::HexDecode` if the string has odd length or invalid chars.
-pub fn hex_decode(hex_string: &str) -> Result<Vec<u8>> {
+/// Returns [`BackupError::HexDecode`] if the string has odd length or invalid chars.
+pub(crate) fn hex_decode(hex_string: &str) -> Result<Vec<u8>> {
     if hex_string.len() % 2 != 0 {
         return Err(BackupError::HexDecode(
             "Input string has odd length".to_string(),
@@ -30,9 +32,9 @@ pub fn hex_decode(hex_string: &str) -> Result<Vec<u8>> {
 /// * `bytes` - Byte slice to encode.
 ///
 /// # Returns
-/// A `String` of hex digits (two chars per input byte).
+/// A [`String`] of hex digits (two chars per input byte).
 #[must_use]
-pub fn hex_encode(bytes: &[u8]) -> String {
+pub(crate) fn hex_encode(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 

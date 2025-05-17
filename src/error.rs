@@ -47,9 +47,6 @@ pub enum BackupError {
     /// UTF-8 conversion failed.
     Utf8(std::string::FromUtf8Error),
 
-    /// Unsupported feature for this iOS version.
-    UnsupportedVersion(String),
-
     /// A general, catch-all error with a descriptive message.
     General(String),
 
@@ -62,17 +59,8 @@ pub enum BackupError {
     /// Cryptographic data had an unexpected length.
     InvalidCryptoDataLength { expected: usize, actual: usize },
 
-    /// Padding error encountered during decryption.
-    PaddingError,
-
-    /// Could not determine the user home directory for path expansion.
-    HomeDirNotFound,
-
     /// Invalid TLV data encountered.
     InvalidTlvData(String),
-
-    /// Operating system is not supported for default backup path.
-    UnsupportedOs(String),
 
     /// Failed to parse `MBFile` `NSKeyedArchiver` plist.
     PlistParseError(String),
@@ -106,9 +94,6 @@ impl fmt::Display for BackupError {
             BackupError::DeviceNotFound(udid) => write!(f, "Device not found: {udid}"),
             BackupError::HexDecode(msg) => write!(f, "Hex decoding error: {msg}"),
             BackupError::Utf8(err) => write!(f, "UTF-8 conversion error: {err}"),
-            BackupError::UnsupportedVersion(version) => {
-                write!(f, "Feature not supported for this iOS version: {version}")
-            }
             BackupError::General(msg) => write!(f, "General backup error: {msg}"),
             BackupError::MissingPlistKey(key) => {
                 write!(f, "Missing required key in Manifest.plist: {key}")
@@ -120,12 +105,7 @@ impl fmt::Display for BackupError {
                 f,
                 "Invalid data length for cryptographic operation: expected {expected}, got {actual}"
             ),
-            BackupError::PaddingError => write!(f, "Padding error during decryption"),
-            BackupError::HomeDirNotFound => {
-                write!(f, "Could not determine home directory to expand path")
-            }
             BackupError::InvalidTlvData(msg) => write!(f, "Invalid TLV data: {msg}"),
-            BackupError::UnsupportedOs(msg) => write!(f, "Unsupported OS: {msg}"),
             BackupError::PlistParseError(msg) => write!(f, "MBFile plist parse error: {msg}"),
         }
     }
