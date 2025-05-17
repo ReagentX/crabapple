@@ -61,7 +61,7 @@ pub fn derive_key_from_password(
 /// # Errors
 /// Returns `BackupError::Crypto` or `KeyUnwrapFailed` if unwrapping fails.
 pub fn unlock_keys_from_manifest(
-    main_key: &[u8], // This is Kmaster, should be 32 bytes for AES-256
+    main_key: &[u8],
     plist_info: &Manifest,
 ) -> Result<HashMap<u32, ProtectionClassKey>> {
     if main_key.len() != 32 {
@@ -121,10 +121,7 @@ pub fn unlock_keys_from_manifest(
 ///
 /// # Errors
 /// Returns [`BackupError::Crypto`] or [`BackupError::InvalidCryptoDataLength`] on failure.
-pub fn aes_decrypt_cbc_with_padding(
-    data: &[u8], // ciphertext
-    key: &[u8],
-) -> Result<Vec<u8>> {
+pub fn aes_decrypt_cbc_with_padding(data: &[u8], key: &[u8]) -> Result<Vec<u8>> {
     if key.len() != 32 {
         // Assuming AES-256 for this function
         return Err(BackupError::InvalidCryptoDataLength {

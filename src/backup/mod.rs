@@ -6,7 +6,7 @@ pub mod manifest_db;
 pub mod models;
 pub(crate) mod util;
 
-use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fs::read;
 
 use std::path::{Path, PathBuf};
@@ -14,7 +14,6 @@ use std::path::{Path, PathBuf};
 use crypto::aes_kw_unwrap_bytes;
 use manifest_db::ManifestDb;
 use models::file::BackupFileEntry;
-use models::keyring::ProtectionClassKey;
 use models::manifest_data::database::DecryptedManifestDb;
 use models::manifest_data::lockdown::ManifestLockdownInfo;
 use models::manifest_data::manifest::{Manifest, ManifestData};
@@ -77,7 +76,7 @@ impl Backup {
         let manifest = Manifest::load(&manifest_plist)?;
 
         let (main_decryption_key_opt, unlocked_class_keys_opt) = if manifest.is_encrypted {
-            let bkb = manifest.backup_key_bag.as_ref().ok_or_else(|| {
+            let backup_key_bag = manifest.backup_key_bag.as_ref().ok_or_else(|| {
                 BackupError::MissingPlistKey(
                     "BackupKeyBag (required for encrypted backup)".to_string(),
                 )
@@ -86,10 +85,10 @@ impl Backup {
             let main_derived_key = match auth {
                 Authentication::Password(ref password) => derive_key_from_password(
                     password.as_bytes(),
-                    &bkb.dpsl,
-                    bkb.dpic,
-                    &bkb.salt,
-                    bkb.iter,
+                    &backup_key_bag.dpsl,
+                    backup_key_bag.dpic,
+                    &backup_key_bag.salt,
+                    backup_key_bag.iter,
                 )?,
                 Authentication::DerivedKey(ref key_hex) => hex_decode(key_hex)?,
             };
@@ -109,15 +108,8 @@ impl Backup {
             unlocked_class_keys: unlocked_class_keys_opt.clone(),
         };
 
-        // Decrypt and process Manifest.db
-        let manifest_key_ref = manifest_data.manifest.manifest_key.as_deref();
-
-        let manifest_db_obj = ManifestDb::new(
-            &device_backup_path.join("Manifest.db"),
-            manifest_data.manifest.is_encrypted,
-            manifest_key_ref,
-            &manifest_data.unlocked_class_keys,
-        )?;
+        let manifest_db_obj =
+            ManifestDb::new(&device_backup_path.join("Manifest.db"), &manifest_data)?;
 
         // Create a connection to the manifest database
         let mdb = manifest_db_obj.into_decrypted_db_info();
@@ -171,7 +163,19 @@ impl Backup {
     /// # Errors
     /// Returns [`BackupError::ManifestDbNotFound`] if the manifest database is unavailable,
     /// or [`BackupError::Database`] if the database query fails.
-    pub fn query_all_domains(&self) -> Result<Vec<String>> {
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use rusqlite::Connection;
+    /// use crabapple::backup::manifest_db;
+    ///
+    /// // Open a real Manifest.db instead of in-memory:
+    /// let conn: Connection = Connection::open("/path/to/Manifest.db").unwrap();
+    /// let domains = manifest_db::query_all_domains(&conn).unwrap();
+    /// println!("{:?}", domains);
+    /// ```
+    pub fn query_all_domains(&self) -> Result<HashSet<String>> {
         manifest_db::query_all_domains(&self.db)
     }
 
@@ -182,32 +186,61 @@ impl Backup {
     ///
     /// # Errors
     /// Returns [`BackupError::ManifestDbNotFound`] if the manifest database information is missing.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use crabapple::{Backup, Authentication};
+    /// use std::path::Path;
+    ///
+    /// let backup = Backup::new(Path::new("/path/to/backup"), Authentication::Password("pass".into())).unwrap();
+    /// let db_path = backup.get_manifest_db();
+    /// println!("Manifest.db path: {:?}", db_path);
+    /// ```
     pub fn get_manifest_db(&self) -> &Path {
         &self.decrypted_manifest_db.db_path
-    }
-
-    /// List unique protection domains present in the backup.
-    ///
-    /// # Returns
-    /// A [`HashSet<String>`] of all distinct file domains recorded in the backup.
-    ///
-    /// # Errors
-    /// Returns [`BackupError::ManifestDbNotFound`] if the manifest database is unavailable,
-    /// or [`BackupError::Database`] if opening the database connection fails.
-    pub fn list_domains(&self) -> Result<String> {
-        let files = self.get_backup_files_list()?;
-        let domains = files.into_iter().map(|e| e.domain).collect();
-        Ok(domains)
     }
 
     /// List all files recorded in `Manifest.db`.
     ///
     /// # Errors
     /// Returns `BackupError` if the database cannot be accessed.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use crabapple::{Backup, Authentication};
+    /// use std::path::Path;
+    ///
+    /// let backup = Backup::new(Path::new("/path/to/backup"), Authentication::Password("pass".into())).unwrap();
+    /// let files = backup.get_backup_files_list().unwrap();
+    /// for file in files {
+    ///     println!("{:?}", file);
+    /// }
+    /// ```
     pub fn get_backup_files_list(&self) -> Result<Vec<BackupFileEntry>> {
         manifest_db::query_all_files(&self.db)
     }
 
+    /// Get a single file entry by its file ID.
+    ///
+    /// # Arguments
+    /// * `file_id` - The file's unique identifier (`SHA1` hash).
+    ///
+    /// # Errors
+    /// Returns [`BackupError::FileNotFoundInBackup`] if the specified file ID is not found,
+    /// or [`BackupError::Database`] if the database query fails.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use crabapple::{Backup, Authentication};
+    /// use std::path::Path;
+    ///
+    /// let backup = Backup::new(Path::new("/path/to/backup"), Authentication::Password("pass".into())).unwrap();
+    /// let entry = backup.get_file("41ee3469300471004e6d526ebd09c051c19f8a39").unwrap();
+    /// println!("File domain: {}", entry.domain);
+    /// ```
     pub fn get_file(&self, file_id: &str) -> Result<BackupFileEntry> {
         manifest_db::query_file_by_id(&self.db, file_id)?
             .ok_or_else(|| BackupError::FileNotFoundInBackup(file_id.to_string()))
@@ -224,6 +257,17 @@ impl Backup {
     /// # Errors
     /// Returns [`BackupError::FileNotFoundInBackup`] if the file ID is not found,
     /// or [`BackupError::Io`] for I/O or decryption failures.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use crabapple::{Backup, Authentication};
+    /// use std::path::Path;
+    ///
+    /// let backup = Backup::new(Path::new("/path/to/backup"), Authentication::Password("pass".into())).unwrap();
+    /// let data = backup.get_file_decrypted_copy("41ee3469300471004e6d526ebd09c051c19f8a39").unwrap();
+    /// println!("Decrypted data length: {}", data.len());
+    /// ```
     pub fn get_file_decrypted_copy(&self, file_id: &str) -> Result<Vec<u8>> {
         let file_entry = self.get_file(file_id)?;
         self.decrypt_entry(&file_entry)
@@ -243,6 +287,15 @@ impl Backup {
 
     /// Decrypt the file represented by [`BackupFileEntry`], returning plaintext bytes.
     ///
+    // The first 4 bytes of the [`BackupFileEntry`]'s [`key`](BackupFileEntry::key) are interpreted as a little-endian
+    // `u32` protection class identifier. The remainder is treated as an AES-key-wrapped
+    // file key (RFC 3394).
+    //
+    // 1. Parse out the protection class ID.
+    // 2. Look up the corresponding unwrapped class key in `class_keys`.
+    // 3. Unwrap the file-specific AES key using AES-Key-Wrap.
+    // 4. Decrypt `ciphertext` with AES-256-CBC (zero IV), stripping PKCS#7 padding.
+    ///
     /// # Arguments
     /// * `entry` - A [`BackupFileEntry`] containing metadata and encrypted file ID.
     ///
@@ -260,7 +313,7 @@ impl Backup {
         let data = read(&source)?;
 
         if let Some(encryption_key) = &entry.metadata.encryption_key {
-            let (_, key_bytes) = encryption_key.split_at(4);
+            let (_, key_bytes) = encryption_key.get_class_key();
 
             let class_key_entry = self
                 .manifest_data

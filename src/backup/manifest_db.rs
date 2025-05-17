@@ -2,18 +2,23 @@
 
 use plist::Value;
 use rusqlite::Connection;
-use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
-use crate::BackupFileEntry;
-use crate::backup::crypto::{aes_decrypt_cbc_with_padding, aes_kw_unwrap_bytes};
-use crate::backup::models::file::MBFile;
-use crate::backup::models::keyring::ProtectionClassKey;
-use crate::backup::models::manifest_data::database::DecryptedManifestDb;
-use crate::backup::util::hex::hex_encode;
-use crate::error::{BackupError, Result};
+use crate::{
+    backup::{
+        crypto::{aes_decrypt_cbc_with_padding, aes_kw_unwrap_bytes},
+        models::{
+            file::{BackupFileEntry, MBFile},
+            manifest_data::database::DecryptedManifestDb,
+            manifest_data::manifest::ManifestData,
+        },
+        util::hex::hex_encode,
+    },
+    error::{BackupError, Result},
+};
 
 /// Represents the backup's `Manifest.db`, decrypted if necessary, and holds decryption info.
 pub struct ManifestDb {
@@ -31,12 +36,7 @@ impl ManifestDb {
     ///
     /// # Errors
     /// Returns [`BackupError::ManifestDbNotFound`] if the DB file is missing, or [`BackupError::Crypto`] on decryption errors.
-    pub fn new(
-        db_path: &Path,
-        is_encrypted: bool,
-        manifest_key_data: Option<&[u8]>,
-        class_keys: &Option<HashMap<u32, ProtectionClassKey>>,
-    ) -> Result<Self> {
+    pub fn new(db_path: &Path, manifest_data: &ManifestData) -> Result<Self> {
         if !db_path.exists() {
             return Err(BackupError::ManifestDbNotFound);
         }
@@ -45,32 +45,32 @@ impl ManifestDb {
         let mut buffer = Vec::new();
         db_bytes.read_to_end(&mut buffer)?;
 
-        let decrypted_db_info = if is_encrypted {
-            let manifest_key_bytes = manifest_key_data.ok_or_else(|| {
-                BackupError::Crypto(
-                    "ManifestKey data not found in PlistInfo for encrypted Manifest.db".to_string(),
-                )
-            })?;
+        let decrypted_db_info = if manifest_data.manifest.is_encrypted {
+            let manifest_key_bytes =
+                manifest_data
+                    .manifest
+                    .manifest_key
+                    .as_ref()
+                    .ok_or_else(|| {
+                        BackupError::Crypto(
+                            "ManifestKey data not found in PlistInfo for encrypted Manifest.db"
+                                .to_string(),
+                        )
+                    })?;
 
             // The first 4 bytes of `manifest_key_bytes` are interpreted as a little-endian
             // `u32` protection class identifier. The remainder is treated as an AES-key-wrapped
-            // file key (RFC 3394). This function will:
+            // file key (RFC 3394).
             //
             // 1. Parse out the protection class ID.
             // 2. Look up the corresponding unwrapped class key in `class_keys`.
             // 3. Unwrap the file-specific AES key using AES-Key-Wrap.
             // 4. Decrypt `ciphertext` with AES-256-CBC (zero IV), stripping PKCS#7 padding.
+            // TODO: this is repeated in `Backup::get_file_decrypted_copy`, clean it up
             let (class_bytes, key_bytes) = manifest_key_bytes.split_at(4);
             let manifest_class = u32::from_le_bytes(class_bytes.try_into().unwrap());
 
-            let class_key_entry = class_keys
-                .as_ref()
-                .and_then(|keys| keys.get(&manifest_class))
-                .ok_or_else(|| {
-                    BackupError::Crypto(format!(
-                        "Class {manifest_class} key not found, needed to decrypt Manifest.db key"
-                    ))
-                })?;
+            let class_key_entry = manifest_data.get_class_key(manifest_class)?;
 
             let key = aes_kw_unwrap_bytes(&class_key_entry.key, key_bytes)
                 .map_err(|_| BackupError::KeyUnwrapFailed(manifest_class))?;
@@ -112,7 +112,7 @@ impl ManifestDb {
 ///
 /// # Errors
 /// Returns `BackupError::Database` on query failures.
-pub fn query_all_domains(conn: &Connection) -> Result<Vec<String>> {
+pub fn query_all_domains(conn: &Connection) -> Result<HashSet<String>> {
     let mut stmt = conn.prepare(
         "SELECT DISTINCT
              CASE
@@ -124,9 +124,9 @@ pub fn query_all_domains(conn: &Connection) -> Result<Vec<String>> {
              FROM Files;",
     )?;
     let mut rows = stmt.query([])?;
-    let mut domains = Vec::new();
+    let mut domains = HashSet::new();
     while let Some(row) = rows.next()? {
-        domains.push(row.get(0)?);
+        domains.insert(row.get(0)?);
     }
     Ok(domains)
 }

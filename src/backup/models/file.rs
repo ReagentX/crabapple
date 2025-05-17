@@ -1,11 +1,29 @@
 //! File metadata and cryptographic information for backup entries.
-
 use plist::Value;
 
 use crate::{
     backup::util::plist::{as_dictionary, get_key_as_data, get_key_as_int, get_key_as_uint},
     error::{BackupError, Result},
 };
+
+#[derive(Debug, Clone)]
+// The first 4 bytes of a key are interpreted as a little-endian
+// `u32` protection class identifier. The remainder is treated as an AES-key-wrapped
+// file key (`RFC 3394`).
+pub struct FileKey {
+    key: Vec<u8>,
+}
+
+impl FileKey {
+    fn new(key: Vec<u8>) -> Self {
+        FileKey { key }
+    }
+
+    /// Get the protection class identifier and the key blob.
+    pub fn get_class_key(&self) -> (&[u8], &[u8]) {
+        self.key.split_at(4)
+    }
+}
 
 /// Metadata and cryptographic information for a single backup file entry.
 #[derive(Debug, Clone)]
@@ -31,7 +49,7 @@ pub struct MBFile {
     /// Protection class identifier for the file.
     pub protection_class: u32,
     /// Optional wrapped encryption key blob (includes class in first 4 bytes).
-    pub encryption_key: Option<Vec<u8>>,
+    pub encryption_key: Option<FileKey>,
 }
 
 impl MBFile {
@@ -70,7 +88,7 @@ impl MBFile {
                 })?;
 
             let data = get_key_as_data(data_dict, "NS.data")?;
-            Some(data.clone())
+            Some(FileKey::new(data.clone()))
         } else {
             None
         };
