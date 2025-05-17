@@ -25,7 +25,7 @@ Documentation is available on [docs.rs](https://docs.rs/crabapple).
 ## Quick Start
 
 ```rust ,no_run
-use std::io::copy;
+use std::{io::copy, fs::File};
 use crabapple::{Backup, Authentication};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -43,9 +43,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Decrypt and read a file entry as a stream
     if let Some(entry) = entries.first() {
         let mut stream = backup.decrypt_entry_stream(&entry)?;
-        // Do something with the stream
-        let mut plain = Vec::new();
-        copy(&mut stream, &mut plain)?;
+        // Write the stream to a file
+        let mut file = File::create("decrypted.txt")?;
+        copy(&mut stream, &mut file)?;
     }
 
     // Alternatively, decrypt and read a file entry into memory
