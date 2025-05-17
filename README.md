@@ -39,10 +39,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("{} - {}/{}", entry.file_id, entry.domain, entry.relative_path);
     }
 
-    // Get the path to the decrypted Manifest.db
-    let manifest_db = backup.get_manifest_db()?;
-    println!("Decrypted Manifest.db path: {:?}", manifest_db);
-
     // Decrypt and read the first file entry in the backup
     if let Some(entry) = entries.first() {
         let data = backup.get_file_decrypted_copy(&entry.file_id)?;

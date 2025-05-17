@@ -21,6 +21,23 @@ pub struct ManifestData {
     pub unlocked_class_keys: Option<HashMap<u32, ProtectionClassKey>>,
 }
 
+impl ManifestData {
+    /// Get the ProtectionClassKey for a given protection class.
+    pub fn get_class_key(&self, protection_class: u32) -> Result<&ProtectionClassKey> {
+        self.unlocked_class_keys
+            .as_ref()
+            .and_then(|keys| keys.get(&protection_class))
+            .ok_or_else(|| BackupError::Crypto(format!("Class {protection_class} key not found!",)))
+    }
+
+    /// Get all decryption keys for the manifest
+    pub fn keys(&self) -> Result<&HashMap<u32, ProtectionClassKey>> {
+        self.unlocked_class_keys.as_ref().ok_or_else(|| {
+            BackupError::Crypto("Missing class keys for encrypted backup".to_string())
+        })
+    }
+}
+
 /// Parsed data from `Manifest.plist` describing the backup.
 #[derive(Debug, Clone)]
 pub struct Manifest {

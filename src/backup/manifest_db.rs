@@ -52,13 +52,20 @@ impl ManifestDb {
                 )
             })?;
 
-            // TODO: Abstract this as a function like `decrypt_file()` somewhere
+            // The first 4 bytes of `manifest_key_bytes` are interpreted as a little-endian
+            // `u32` protection class identifier. The remainder is treated as an AES-key-wrapped
+            // file key (RFC 3394). This function will:
+            //
+            // 1. Parse out the protection class ID.
+            // 2. Look up the corresponding unwrapped class key in `class_keys`.
+            // 3. Unwrap the file-specific AES key using AES-Key-Wrap.
+            // 4. Decrypt `ciphertext` with AES-256-CBC (zero IV), stripping PKCS#7 padding.
             let (class_bytes, key_bytes) = manifest_key_bytes.split_at(4);
             let manifest_class = u32::from_le_bytes(class_bytes.try_into().unwrap());
 
             let class_key_entry = class_keys
                 .as_ref()
-                .and_then(|keys| keys.get(&manifest_class)) // Class 4
+                .and_then(|keys| keys.get(&manifest_class))
                 .ok_or_else(|| {
                     BackupError::Crypto(format!(
                         "Class {manifest_class} key not found, needed to decrypt Manifest.db key"
@@ -71,11 +78,11 @@ impl ManifestDb {
             let decrypted_manifest_db = aes_decrypt_cbc_with_padding(&buffer, &key)?;
 
             // TODO: Open the database in memory
-            let mut file = File::create("/tmp/decrypted.db")?;
+            let mut file = File::create("/tmp/Manifest.db")?;
             file.write_all(&decrypted_manifest_db)?;
 
             DecryptedManifestDb {
-                db_path: PathBuf::from("/tmp/decrypted.db"),
+                db_path: PathBuf::from("/tmp/Manifest.db"),
                 is_temporary: false, // Original DB path
                 connection_string: db_path.to_string_lossy().into_owned(), // Path for direct open
                 decryption_key: Some(hex_encode(&key)), // Key for SQLCipher

@@ -110,34 +110,6 @@ pub fn unlock_keys_from_manifest(
     Ok(unlocked_keys)
 }
 
-/// Unwrap (decrypt) a single file key for a given protection class.
-///
-/// # Arguments
-/// * `class_id` - Numeric protection class identifier.
-/// * `wrapped_file_key` - Encrypted file key blob.
-/// * `unlocked_class_keys` - Map from class ID to unwrapped class keys.
-///
-/// # Returns
-/// The raw file key bytes.
-///
-/// # Errors
-/// [`BackupError::Crypto`] if unwrapping fails.
-pub fn unwrap_key_for_class(
-    class_id: u32,
-    wrapped_file_key: &[u8],
-    unlocked_class_keys: &HashMap<u32, ProtectionClassKey>,
-) -> Result<Vec<u8>> {
-    let class_key_entry = unlocked_class_keys.get(&class_id).ok_or_else(|| {
-        BackupError::Crypto(format!(
-            "Protection class {class_id} key not found in unlocked keys"
-        ))
-    })?;
-    let class_key_bytes = class_key_entry.key.as_slice();
-    // Use helper to unwrap file key
-    aes_kw_unwrap_bytes(class_key_bytes, wrapped_file_key)
-        .map_err(|_| BackupError::Crypto(format!("Failed to unwrap file key for class {class_id}")))
-}
-
 /// Decrypt data using `AES-256 CBC` with `PKCS7` padding and a zero IV.
 ///
 /// # Arguments
@@ -256,22 +228,19 @@ pub(crate) fn aes_kw_unwrap_bytes(kek_bytes: &[u8], wrapped_data: &[u8]) -> Resu
             // AES-128 key unwrap
             let kek = Kek::<Aes128>::new(GenericArray::from_slice(kek_bytes));
             kek.unwrap(wrapped_data, &mut unwrapped)
-                // .map_err(|_| BackupError::Crypto("AES 128 Key Unwrap failed".to_string()))?;
-                .unwrap();
+                .map_err(|_| BackupError::Crypto("AES 128 Key Unwrap failed".to_string()))?;
         }
         24 => {
             // AES-192 key unwrap
             let kek = Kek::<Aes192>::new(GenericArray::from_slice(kek_bytes));
             kek.unwrap(wrapped_data, &mut unwrapped)
-                // .map_err(|_| BackupError::Crypto("AES 192 Key Unwrap failed".to_string()))?;
-                .unwrap();
+                .map_err(|_| BackupError::Crypto("AES 192 Key Unwrap failed".to_string()))?;
         }
         32 => {
             // AES-256 key unwrap
             let kek = Kek::<Aes256>::new(GenericArray::from_slice(kek_bytes));
             kek.unwrap(wrapped_data, &mut unwrapped)
-                // .map_err(|_| BackupError::Crypto("AES 256 Key Unwrap failed".to_string()))?;
-                .unwrap();
+                .map_err(|_| BackupError::Crypto("AES 256 Key Unwrap failed".to_string()))?;
         }
         _ => {
             return Err(BackupError::Crypto(format!(
@@ -349,32 +318,6 @@ mod tests {
         let kek = [0x0d; 32];
         let data = b"12345678ABCDEFGH";
         wrap_and_unwrap(&kek, data);
-    }
-
-    #[test]
-    fn test_unwrap_key_for_class() {
-        use std::collections::HashMap;
-        let class_id = 100;
-        // Simulate a class key (16-byte for AES-128)
-        let class_key = vec![0x1f; 16];
-        let pck = ProtectionClassKey {
-            class_id,
-            key: class_key.clone(),
-        };
-        let mut keys = HashMap::new();
-        keys.insert(class_id, pck);
-
-        // Create a dummy file key and wrap it
-        let file_key = b"example_file_key";
-        let mut wrapped = vec![0u8; file_key.len() + 8];
-        let kek = GenericArray::from_slice(&class_key);
-        Kek::<Aes128>::new(kek)
-            .wrap(file_key, &mut wrapped)
-            .unwrap();
-
-        // Now unwrap via our API
-        let unwrapped = unwrap_key_for_class(class_id, &wrapped, &keys).unwrap();
-        assert_eq!(unwrapped, file_key);
     }
 
     #[test]
