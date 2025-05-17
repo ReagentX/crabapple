@@ -36,6 +36,21 @@ impl ManifestDb {
     ///
     /// # Errors
     /// Returns [`BackupError::ManifestDbNotFound`] if the DB file is missing, or [`BackupError::Crypto`] on decryption errors.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use crabapple::{Backup, Authentication};
+    /// use crabapple::backup::manifest_db::ManifestDb;
+    /// use std::path::Path;
+    ///
+    /// let backup = Backup::new(
+    ///     Path::new("/path/to/backup"),
+    ///     &Authentication::Password("pass".into())
+    /// ).unwrap();
+    ///
+    /// let db_path = backup.get_manifest_db_path();
+    /// ```
     pub fn new(db_path: &Path, manifest_data: &ManifestData) -> Result<Self> {
         if !db_path.exists() {
             return Err(BackupError::ManifestDbNotFound);
@@ -100,7 +115,7 @@ impl ManifestDb {
 
     /// Consume this [`ManifestDb` ]and return the underlying [`DecryptedManifestDb`] information.
     #[must_use]
-    pub fn into_decrypted_db_info(self) -> DecryptedManifestDb {
+    pub(crate) fn into_decrypted_db_info(self) -> DecryptedManifestDb {
         self.decrypted_db_info
     }
 }
@@ -112,6 +127,22 @@ impl ManifestDb {
 ///
 /// # Errors
 /// Returns `BackupError::Database` on query failures.
+///
+/// # Examples
+///
+/// ```no_run
+/// use crabapple::{Backup, Authentication};
+/// use crabapple::backup::manifest_db;
+/// use std::path::Path;
+///
+/// let backup = Backup::new(
+///     Path::new("/path/to/backup"),
+///     &Authentication::Password("pass".into())
+/// ).unwrap();
+///
+/// let domains = manifest_db::query_all_domains(&backup.db).unwrap();
+/// println!("Domains: {:?}", domains);
+/// ```
 pub fn query_all_domains(conn: &Connection) -> Result<HashSet<String>> {
     let mut stmt = conn.prepare(
         "SELECT DISTINCT
@@ -138,6 +169,22 @@ pub fn query_all_domains(conn: &Connection) -> Result<HashSet<String>> {
 ///
 /// # Errors
 /// Returns [`BackupError::Database`] if the `SQL` query or blob reading fails.
+///
+/// # Examples
+///
+/// ```no_run
+/// use crabapple::{Backup, Authentication};
+/// use crabapple::backup::manifest_db;
+/// use std::path::Path;
+///
+/// let backup = Backup::new(
+///     Path::new("/path/to/backup"),
+///     &Authentication::Password("pass".into())
+/// ).unwrap();
+///
+/// let files = manifest_db::query_all_files(&backup.db).unwrap();
+/// println!("File count: {}", files.len());
+/// ```
 pub fn query_all_files(conn: &Connection) -> Result<Vec<BackupFileEntry>> {
     let mut stmt =
         conn.prepare("SELECT rowid, fileID, domain, relativePath, flags, file FROM Files")?;
@@ -180,6 +227,23 @@ pub fn query_all_files(conn: &Connection) -> Result<Vec<BackupFileEntry>> {
 ///
 /// # Errors
 /// Returns [`BackupError::Database`] on query failures.
+///
+/// # Examples
+///
+/// ```no_run
+/// use crabapple::{Backup, Authentication};
+/// use crabapple::backup::manifest_db;
+/// use std::path::Path;
+///
+/// let backup = Backup::new(
+///     Path::new("/path/to/backup"),
+///     &Authentication::Password("pass".into())
+/// ).unwrap();
+///
+/// if let Some(entry) = manifest_db::query_file_by_id(&backup.db, "fileid").unwrap() {
+///     println!("Found file: {}", entry.file_id);
+/// }
+/// ```
 pub fn query_file_by_id(conn: &Connection, path: &str) -> Result<Option<BackupFileEntry>> {
     // Path in DB is typically Domain-RelativePath
     let mut stmt = conn.prepare(

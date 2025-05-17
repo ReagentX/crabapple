@@ -16,6 +16,17 @@ use super::models::manifest_data::{lockdown::ManifestLockdownInfo, manifest::Man
 /// # Errors
 /// Returns `BackupError::ManifestPlistNotFound` if `Manifest.plist` is missing,
 /// or `BackupError::Plist` if parsing fails.
+///
+/// # Examples
+///
+/// ```no_run
+/// use crabapple::backup::device::get_device_basic_info;
+/// use std::path::Path;
+///
+/// let path = Path::new("/path/to/backup");
+/// let info = get_device_basic_info(path).unwrap();
+/// println!("Device name: {}", info.device_name);
+/// ```
 pub fn get_device_basic_info(device_backup_path: &Path) -> Result<ManifestLockdownInfo> {
     let plist_path = device_backup_path.join("Manifest.plist");
     if !plist_path.exists() {

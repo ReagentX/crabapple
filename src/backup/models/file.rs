@@ -20,7 +20,24 @@ impl FileKey {
     }
 
     /// Get the protection class identifier and the key blob.
-    #[must_use] pub fn get_class_key(&self) -> (&[u8], &[u8]) {
+    ///
+    /// # Returns
+    /// A tuple containing the 4-byte class identifier and the remaining key bytes.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use crabapple::backup::models::file::FileKey;
+    ///
+    /// let bytes = &[0,0,0,1, 0xAA,0xBB,0xCC];
+    /// let fk = FileKey::new(bytes.to_vec());
+    /// let (class_id_bytes, key_blob) = fk.get_class_key();
+    ///
+    /// assert_eq!(class_id_bytes, &[0,0,0,1]);
+    /// assert_eq!(key_blob, &[0xAA,0xBB,0xCC]);
+    /// ```
+    #[must_use]
+    pub fn get_class_key(&self) -> (&[u8], &[u8]) {
         self.key.split_at(4)
     }
 }
@@ -54,6 +71,23 @@ pub struct MBFile {
 
 impl MBFile {
     /// Deserialize an `NSKeyedArchiver` blob into an `MBFile`, extracting file metadata and encryption info.
+    ///
+    /// # Arguments
+    /// * `plist_data` - A plist `Value` representing the `MBFile` object.
+    ///
+    /// # Errors
+    /// Returns [`BackupError::MissingPlistKey`] or [`BackupError::PlistParseError`] on parse failure.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use plist::Value;
+    /// use crabapple::backup::models::file::MBFile;
+    ///
+    /// let plist: Value = /* load your plist here */ unimplemented!();
+    /// let mb = MBFile::from_plist(plist).unwrap();
+    /// println!("Size: {} bytes", mb.size);
+    /// ```
     pub fn from_plist(plist_data: Value) -> Result<MBFile> {
         // parse top-level dictionary
         let dict = as_dictionary(&plist_data)?;

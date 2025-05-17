@@ -33,6 +33,21 @@ type Aes256CbcEnc = cbc::Encryptor<Aes256>;
 ///
 /// # Errors
 /// Never fails unless `PBKDF2` implementation panics.
+///
+/// # Examples
+///
+/// ```no_run
+/// use crabapple::backup::crypto::derive_key_from_password;
+///
+/// let password = b"password";
+/// let dpsl = b"salt1";
+/// let dpic = 1000;
+/// let salt = b"salt2";
+/// let iter = 1000;
+/// let key = derive_key_from_password(password, dpsl, dpic, salt, iter).unwrap();
+///
+/// assert_eq!(key.len(), 32);
+/// ```
 pub fn derive_key_from_password(
     password: &[u8],
     dpsl: &[u8],
@@ -123,6 +138,19 @@ pub fn unlock_keys_from_manifest(
 ///
 /// # Errors
 /// Returns [`BackupError::Crypto`] or [`BackupError::InvalidCryptoDataLength`] on failure.
+///
+/// # Examples
+///
+/// ```no_run
+/// use crabapple::backup::crypto::{aes_encrypt_cbc_with_padding, aes_decrypt_cbc_with_padding};
+///
+/// let key = vec![0u8; 32];
+/// let data = b"hello world";
+/// let ciphertext = aes_encrypt_cbc_with_padding(data, &key).unwrap();
+/// let plaintext = aes_decrypt_cbc_with_padding(&ciphertext, &key).unwrap();
+///
+/// assert_eq!(plaintext, data);
+/// ```
 pub fn aes_decrypt_cbc_with_padding(data: &[u8], key: &[u8]) -> Result<Vec<u8>> {
     if key.len() != 32 {
         // Assuming AES-256 for this function
@@ -172,11 +200,20 @@ pub fn aes_decrypt_cbc_with_padding(data: &[u8], key: &[u8]) -> Result<Vec<u8>> 
 ///
 /// # Errors
 /// Returns [`BackupError::Crypto`] or [`BackupError::InvalidCryptoDataLength`] on failure.
-#[allow(dead_code)]
-pub fn aes_encrypt_cbc_with_padding(
-    data: &[u8], // plaintext
-    key: &[u8],
-) -> Result<Vec<u8>> {
+///
+/// # Examples
+///
+/// ```no_run
+/// use crabapple::backup::crypto::{aes_encrypt_cbc_with_padding, aes_decrypt_cbc_with_padding};
+///
+/// let key = vec![0u8; 32];
+/// let data = b"hello world";
+/// let ct = aes_encrypt_cbc_with_padding(data, &key).unwrap();
+/// let pt = aes_decrypt_cbc_with_padding(&ct, &key).unwrap();
+///
+/// assert_eq!(pt, data);
+/// ```
+pub fn aes_encrypt_cbc_with_padding(data: &[u8], key: &[u8]) -> Result<Vec<u8>> {
     if key.len() != 32 {
         // Assuming AES-256 for this function
         return Err(BackupError::InvalidCryptoDataLength {

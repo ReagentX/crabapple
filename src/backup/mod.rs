@@ -51,7 +51,7 @@ impl Backup {
     /// * `auth` - `BackupAuth` specifying password or derived key.
     ///
     /// # Errors
-    /// Returns `BackupError` if paths are invalid, manifest loading fails, or decryption fails.
+    /// Returns [`BackupError`] if paths are invalid, manifest loading fails, or decryption fails.
     pub fn new<P: AsRef<Path>>(backup_path: P, auth: &Authentication) -> Result<Self> {
         let device_backup_path = backup_path.as_ref().to_path_buf();
         if !device_backup_path.is_dir() {
@@ -126,7 +126,22 @@ impl Backup {
     /// Returns the current device `UDID` (the backup folder name).
     ///
     /// # Errors
-    /// Returns `BackupError::InvalidBackupRoot` if the `UDID` cannot be retrieved as a string.
+    /// Returns [`BackupError::InvalidBackupRoot`] if the `UDID` cannot be retrieved as a string.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use crabapple::{Backup, Authentication};
+    /// use std::path::Path;
+    ///
+    /// let backup = Backup::new(
+    ///     Path::new("/path/to/backup"),
+    ///     &Authentication::Password("pass".into())
+    /// ).unwrap();
+    ///
+    /// let udid = backup.udid().unwrap();
+    /// println!("UDID: {}", udid);
+    /// ```
     pub fn udid(&self) -> Result<&str> {
         self.backup_path
             .file_name()
@@ -147,6 +162,26 @@ impl Backup {
     }
 
     /// Returns the main decryption key as a hex string, if the backup is encrypted.
+    ///
+    /// # Returns
+    /// An [`Option<String>`] containing the decryption key in hexadecimal representation,
+    /// or [`None`] if the backup is not encrypted.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use crabapple::{Backup, Authentication};
+    /// use std::path::Path;
+    ///
+    /// let backup = Backup::new(
+    ///     Path::new("/path/to/backup"),
+    ///     &Authentication::Password("pass".into())
+    /// ).unwrap();
+    ///
+    /// if let Some(key_hex) = backup.get_decryption_key_hex() {
+    ///     println!("Key: {}", key_hex);
+    /// }
+    /// ```
     #[must_use]
     pub fn get_decryption_key_hex(&self) -> Option<String> {
         self.manifest_data
@@ -167,13 +202,16 @@ impl Backup {
     /// # Examples
     ///
     /// ```no_run
-    /// use rusqlite::Connection;
-    /// use crabapple::backup::manifest_db;
+    /// use crabapple::{Backup, Authentication};
+    /// use std::path::Path;
     ///
-    /// // Open a real Manifest.db instead of in-memory:
-    /// let conn: Connection = Connection::open("/path/to/Manifest.db").unwrap();
-    /// let domains = manifest_db::query_all_domains(&conn).unwrap();
-    /// println!("{:?}", domains);
+    /// let backup = Backup::new(
+    ///     Path::new("/path/to/backup"),
+    ///     &Authentication::Password("pass".into())
+    /// ).unwrap();
+    ///
+    /// let domains = backup.query_all_domains().unwrap();
+    /// println!("Domains: {:?}", domains);
     /// ```
     pub fn query_all_domains(&self) -> Result<HashSet<String>> {
         manifest_db::query_all_domains(&self.db)
@@ -193,11 +231,15 @@ impl Backup {
     /// use crabapple::{Backup, Authentication};
     /// use std::path::Path;
     ///
-    /// let backup = Backup::new(Path::new("/path/to/backup"), Authentication::Password("pass".into())).unwrap();
-    /// let db_path = backup.get_manifest_db();
+    /// let backup = Backup::new(
+    ///     Path::new("/path/to/backup"),
+    ///     &Authentication::Password("pass".into())
+    /// ).unwrap();
+    ///
+    /// let db_path = backup.get_manifest_db_path();
     /// println!("Manifest.db path: {:?}", db_path);
     /// ```
-    pub fn get_manifest_db(&self) -> &Path {
+    pub fn get_manifest_db_path(&self) -> &Path {
         &self.decrypted_manifest_db.db_path
     }
 
@@ -212,7 +254,11 @@ impl Backup {
     /// use crabapple::{Backup, Authentication};
     /// use std::path::Path;
     ///
-    /// let backup = Backup::new(Path::new("/path/to/backup"), Authentication::Password("pass".into())).unwrap();
+    /// let backup = Backup::new(
+    ///     Path::new("/path/to/backup"),
+    ///     &Authentication::Password("pass".into())
+    /// ).unwrap();
+    ///
     /// let files = backup.get_backup_files_list().unwrap();
     /// for file in files {
     ///     println!("{:?}", file);
@@ -237,9 +283,13 @@ impl Backup {
     /// use crabapple::{Backup, Authentication};
     /// use std::path::Path;
     ///
-    /// let backup = Backup::new(Path::new("/path/to/backup"), Authentication::Password("pass".into())).unwrap();
+    /// let backup = Backup::new(
+    ///     Path::new("/path/to/backup"),
+    ///     &Authentication::Password("pass".into())
+    /// ).unwrap();
+    ///
     /// let entry = backup.get_file("41ee3469300471004e6d526ebd09c051c19f8a39").unwrap();
-    /// println!("File domain: {}", entry.domain);
+    /// println!("File domain: {}", entry.metadata.domain);
     /// ```
     pub fn get_file(&self, file_id: &str) -> Result<BackupFileEntry> {
         manifest_db::query_file_by_id(&self.db, file_id)?
@@ -264,7 +314,11 @@ impl Backup {
     /// use crabapple::{Backup, Authentication};
     /// use std::path::Path;
     ///
-    /// let backup = Backup::new(Path::new("/path/to/backup"), Authentication::Password("pass".into())).unwrap();
+    /// let backup = Backup::new(
+    ///     Path::new("/path/to/backup"),
+    ///     &Authentication::Password("pass".into())
+    /// ).unwrap();
+    ///
     /// let data = backup.get_file_decrypted_copy("41ee3469300471004e6d526ebd09c051c19f8a39").unwrap();
     /// println!("Decrypted data length: {}", data.len());
     /// ```
