@@ -2,7 +2,7 @@
 
 use crate::error::{BackupError, Result};
 use std::collections::HashMap;
-use std::io::{self, Read};
+use std::io::{self, BufReader, Read};
 
 use aes::cipher::{
     BlockDecryptMut, BlockEncryptMut, KeyIvInit, block_padding::Pkcs7, generic_array::GenericArray,
@@ -19,6 +19,9 @@ use super::models::manifest_data::manifest::Manifest;
 // Define CBC mode for AES-256
 type Aes256CbcDec = cbc::Decryptor<Aes256>;
 type Aes256CbcEnc = cbc::Encryptor<Aes256>;
+
+/// Buffer size for batch-reading ciphertext (8 KiB)
+const STREAM_BUFFER_SIZE: usize = 8 * 1024;
 
 /// Derive the `32`-byte encryption key from a user password using `PBKDF2`.
 ///
@@ -291,9 +294,9 @@ pub(crate) fn aes_kw_unwrap_bytes(kek_bytes: &[u8], wrapped_data: &[u8]) -> Resu
 
 /// Creates a streaming reader that decrypts `AES-256-CBC` encrypted data from any `Read` source.
 ///
-/// The returned `AesCbcDecryptReader` reads `16`-byte blocks from the underlying ciphertext reader,
+/// The returned `AesCbcDecryptReader` reads [`STREAM_BUFFER_SIZE`]-byte blocks from the underlying ciphertext reader,
 /// decrypts each block using `AES-256-CBC` with a zero IV, and applies `PKCS7` unpadding on the final block.
-/// Only two cipher blocks and one plaintext buffer are held in memory at once, minimizing RAM usage.
+/// Only two cipher blocks and one plaintext buffer are held in memory at once.
 ///
 /// # Arguments
 /// * `reader` - Source of ciphertext bytes implementing `Read`.
@@ -314,18 +317,20 @@ pub(crate) fn aes_kw_unwrap_bytes(kek_bytes: &[u8], wrapped_data: &[u8]) -> Resu
 /// copy(&mut reader, &mut plaintext).unwrap();
 /// ```
 pub fn aes_decrypt_cbc_reader<R: Read>(
-    mut reader: R,
+    reader: R,
     key: &[u8],
-) -> Result<AesCbcDecryptReader<R>> {
+) -> Result<AesCbcDecryptReader<BufReader<R>>> {
     if key.len() != 32 {
         return Err(BackupError::InvalidCryptoDataLength {
             expected: 32,
             actual: key.len(),
         });
     }
+    // Wrap source in buffered reader to reduce syscalls
+    let mut buf_reader = BufReader::with_capacity(STREAM_BUFFER_SIZE, reader);
     // Read first cipher block into lookahead buffer
     let mut lookahead = [0u8; 16];
-    let n = reader
+    let n = buf_reader
         .read(&mut lookahead)
         .map_err(|e| BackupError::Crypto(format!("I/O error: {}", e)))?;
     if n == 0 {
@@ -341,7 +346,7 @@ pub fn aes_decrypt_cbc_reader<R: Read>(
     let key_ga = GenericArray::from_slice(key);
     let cipher = Aes256CbcDec::new(key_ga, iv);
     Ok(AesCbcDecryptReader {
-        inner: reader,
+        inner: buf_reader,
         cipher,
         lookahead,
         buf: Vec::new(),
@@ -374,49 +379,70 @@ pub struct AesCbcDecryptReader<R: Read> {
 impl<R: Read> Read for AesCbcDecryptReader<R> {
     fn read(&mut self, out: &mut [u8]) -> io::Result<usize> {
         let mut written = 0;
-        // Flush pending decrypted bytes
-        while written < out.len() && self.buf_pos < self.buf.len() {
-            out[written] = self.buf[self.buf_pos];
-            self.buf_pos += 1;
-            written += 1;
+        // Loop until output buffer is full or EOF
+        while written < out.len() {
+            // Flush any pending plaintext bytes
+            if self.buf_pos < self.buf.len() {
+                let to_copy = (self.buf.len() - self.buf_pos).min(out.len() - written);
+                out[written..written + to_copy]
+                    .copy_from_slice(&self.buf[self.buf_pos..self.buf_pos + to_copy]);
+                self.buf_pos += to_copy;
+                written += to_copy;
+                continue;
+            }
+            // No pending data
+            if self.eof {
+                break;
+            }
+            // Batch-read ciphertext into buffer
+            let mut chunk = vec![0u8; STREAM_BUFFER_SIZE];
+            let n = self.inner.read(&mut chunk)?;
+            if n == 0 {
+                // Final block: decrypt & unpad last lookahead block
+                let mut tail = self.lookahead.to_vec();
+                let pt = self
+                    .cipher
+                    .clone()
+                    .decrypt_padded_mut::<Pkcs7>(&mut tail)
+                    .map_err(|e| {
+                        io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            format!("Padding error: {:?}", e),
+                        )
+                    })?;
+                self.buf.clear();
+                self.buf.extend_from_slice(pt);
+                self.buf_pos = 0;
+                self.eof = true;
+            } else {
+                // Combine previous lookahead with new chunk
+                let mut data = self.lookahead.to_vec();
+                data.extend_from_slice(&chunk[..n]);
+                // Compute number of full blocks
+                let total = data.len();
+                let num_blocks = total / 16;
+                if num_blocks == 0 {
+                    // Not enough data to decrypt a block yet; save back
+                    // (shouldn't happen since lookahead is a full block)
+                } else {
+                    // Decrypt all except the last block for chaining/padding
+                    self.buf.clear();
+                    for i in 0..(num_blocks - 1) {
+                        let start = i * 16;
+                        let mut arr = GenericArray::clone_from_slice(&data[start..start + 16]);
+                        self.cipher.decrypt_block_mut(&mut arr);
+                        self.buf.extend_from_slice(&arr);
+                    }
+                    // Update lookahead to last full block
+                    let last_start = (num_blocks - 1) * 16;
+                    self.lookahead
+                        .copy_from_slice(&data[last_start..last_start + 16]);
+                    self.buf_pos = 0;
+                }
+            }
+            // Loop to flush newly decrypted data
         }
-        if written == out.len() {
-            return Ok(written);
-        }
-        if self.eof {
-            return Ok(written);
-        }
-        // Read next ciphertext block
-        let mut next_block = [0u8; 16];
-        let n = self.inner.read(&mut next_block)?;
-        if n == 0 {
-            // Last block: decrypt and unpad lookahead
-            let mut block = self.lookahead.to_vec();
-            // Use a cloned decryptor to preserve stream state
-            let decryptor = self.cipher.clone();
-            let pt = decryptor
-                .decrypt_padded_mut::<Pkcs7>(&mut block)
-                .map_err(|e| {
-                    io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        format!("Padding error: {:?}", e),
-                    )
-                })?;
-            self.buf = pt.to_vec();
-            self.buf_pos = 0;
-            self.eof = true;
-        } else {
-            // Decrypt current lookahead block without padding
-            let mut block = GenericArray::clone_from_slice(&self.lookahead);
-            self.cipher.decrypt_block_mut(&mut block);
-            self.buf = block.to_vec();
-            self.buf_pos = 0;
-            // Shift lookahead
-            self.lookahead = next_block;
-        }
-        // Recursively fill remaining space
-        let more = self.read(&mut out[written..])?;
-        Ok(written + more)
+        Ok(written)
     }
 }
 

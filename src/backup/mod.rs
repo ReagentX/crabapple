@@ -6,24 +6,34 @@ pub mod manifest_db;
 pub mod models;
 pub(crate) mod util;
 
-use std::collections::HashSet;
-use std::fs::{File, read};
-use std::path::{Path, PathBuf};
+use std::{
+    collections::HashSet,
+    fs::{File, read},
+    io::BufReader,
+    path::{Path, PathBuf},
+};
 
-use crypto::aes_kw_unwrap_bytes;
-use manifest_db::ManifestDb;
-use models::file::BackupFileEntry;
-use models::manifest_data::database::DecryptedManifestDb;
-use models::manifest_data::lockdown::ManifestLockdownInfo;
-use models::manifest_data::manifest::{Manifest, ManifestData};
 use rusqlite::Connection;
-use util::hex::{hex_decode, hex_encode};
 
-use crate::Authentication;
-use crate::error::{BackupError, Result};
-
-use self::crypto::{
-    aes_decrypt_cbc_with_padding, derive_key_from_password, unlock_keys_from_manifest,
+use crate::{
+    backup::{
+        crypto::{
+            aes_decrypt_cbc_with_padding, aes_kw_unwrap_bytes, derive_key_from_password,
+            unlock_keys_from_manifest,
+        },
+        manifest_db::ManifestDb,
+        models::{
+            auth::Authentication,
+            file::BackupFileEntry,
+            manifest_data::{
+                database::DecryptedManifestDb,
+                lockdown::ManifestLockdownInfo,
+                manifest::{Manifest, ManifestData},
+            },
+        },
+        util::hex::{hex_decode, hex_encode},
+    },
+    error::{BackupError, Result},
 };
 
 /// Main entry point for working with an iOS backup.
@@ -411,7 +421,7 @@ impl Backup {
     pub fn decrypt_entry_stream(
         &self,
         entry: &BackupFileEntry,
-    ) -> Result<crypto::AesCbcDecryptReader<File>> {
+    ) -> Result<crypto::AesCbcDecryptReader<BufReader<File>>> {
         let ciphertext = File::open(self.backup_path.join(entry.source()))?;
 
         if let Some(encryption_key) = &entry.metadata.encryption_key {

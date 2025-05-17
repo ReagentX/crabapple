@@ -1,11 +1,8 @@
 //! Module for loading, decrypting, and querying the `Manifest.db` of an iOS backup.
+use std::{collections::HashSet, fs::File, io::copy, path::Path};
 
 use plist::Value;
 use rusqlite::Connection;
-use std::collections::HashSet;
-use std::fs::File;
-use std::io::copy;
-use std::path::Path;
 
 use crate::{
     backup::{
@@ -93,7 +90,11 @@ impl ManifestDb {
             // Write decrypted Manifest.db into the platform-specific temporary directory
             let tmp_path = std::env::temp_dir().join("crabapple-Manifest.db");
             let mut file = File::create(&tmp_path)?;
-            copy(&mut decrypted_manifest_db_stream, &mut file)?;
+
+            // Stream-decrypt directly into the temp file
+            copy(&mut decrypted_manifest_db_stream, &mut file).map_err(|e| {
+                BackupError::Crypto(format!("Failed writing decrypted Manifest.db: {}", e))
+            })?;
 
             DecryptedManifestDb {
                 db_path: tmp_path,
