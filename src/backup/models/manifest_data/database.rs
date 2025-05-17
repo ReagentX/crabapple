@@ -13,7 +13,7 @@ pub struct DecryptedManifestDb {
     pub is_temporary: bool,
     /// Connection string (usually the file path).
     pub connection_string: String,
-    /// Optional hex-encoded `SQLCipher` key to use when opening.
+    /// Optional hex-encoded decryption key used to decrypt the database.
     pub decryption_key: Option<String>,
 }
 

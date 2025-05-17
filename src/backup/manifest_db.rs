@@ -101,7 +101,7 @@ impl ManifestDb {
                 db_path: tmp_path,
                 is_temporary: true,
                 connection_string: db_path.to_string_lossy().into_owned(), // Path for direct open
-                decryption_key: Some(hex_encode(&key)),                    // Key for SQLCipher
+                decryption_key: Some(hex_encode(&key)),
             }
         } else {
             DecryptedManifestDb {
