@@ -22,7 +22,7 @@ pub struct ManifestData {
 }
 
 impl ManifestData {
-    /// Get the ProtectionClassKey for a given protection class.
+    /// Get the `ProtectionClassKey` for a given protection class.
     pub fn get_class_key(&self, protection_class: u32) -> Result<&ProtectionClassKey> {
         self.unlocked_class_keys
             .as_ref()
@@ -86,7 +86,7 @@ impl Manifest {
         let lockdown_val = dict
             .get("Lockdown")
             .ok_or_else(|| BackupError::MissingPlistKey("Lockdown".into()))?;
-        let lockdown = ManifestLockdownInfo::from_plist(lockdown_val.clone())?;
+        let lockdown = ManifestLockdownInfo::from_plist(lockdown_val)?;
         Ok(Manifest {
             backup_key_bag,
             is_encrypted,

@@ -20,7 +20,7 @@ impl FileKey {
     }
 
     /// Get the protection class identifier and the key blob.
-    pub fn get_class_key(&self) -> (&[u8], &[u8]) {
+    #[must_use] pub fn get_class_key(&self) -> (&[u8], &[u8]) {
         self.key.split_at(4)
     }
 }

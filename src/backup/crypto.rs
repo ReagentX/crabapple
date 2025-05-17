@@ -78,15 +78,17 @@ pub fn unlock_keys_from_manifest(
 
     for (class_id, class_key_data) in &key_bag.class_keys {
         // Skip classes without WPKY
-        let wpky = match &class_key_data.wpky {
-            Some(w) => w,
-            None => continue,
+        let wpky = if let Some(w) = &class_key_data.wpky {
+            w
+        } else {
+            continue;
         };
 
         // Check wrap flags for passcode protection (bit 0x02)
-        let wrap_bytes = match &class_key_data.wrap {
-            Some(w) => w,
-            None => continue,
+        let wrap_bytes = if let Some(w) = &class_key_data.wrap {
+            w
+        } else {
+            continue;
         };
 
         // Parse wrap flag as big-endian u32

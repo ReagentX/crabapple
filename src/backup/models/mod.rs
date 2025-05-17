@@ -26,7 +26,7 @@ mod tests_types {
         dict.insert("SerialNumber".into(), Value::String("SN123".into()));
         dict.insert("UniqueDeviceID".into(), Value::String("UDID456".into()));
         let value = Value::Dictionary(dict.clone());
-        let info = ManifestLockdownInfo::from_plist(value).unwrap();
+        let info = ManifestLockdownInfo::from_plist(&value).unwrap();
         assert_eq!(info.build_version, "1.2.3");
         assert_eq!(info.device_name, "TestDevice");
         assert_eq!(info.product_type, "TestType");
@@ -77,7 +77,7 @@ mod tests_types {
         map.insert(*b"WPKY", b"wp".to_vec());
         map.insert(*b"WRAP", b"wr".to_vec());
         map.insert(*b"UUID", b"id".to_vec());
-        let ck = ClassKeyData::from_map(map);
+        let ck = ClassKeyData::from_map(&map);
         assert_eq!(ck.wpky.unwrap(), b"wp".to_vec());
         assert_eq!(ck.wrap.unwrap(), b"wr".to_vec());
         assert_eq!(ck.uuid.unwrap(), b"id".to_vec());

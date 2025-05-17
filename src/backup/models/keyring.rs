@@ -67,7 +67,8 @@ impl BackupKeyBag {
                     // starting a new class‐key record
                     if let Some(cur) = current.take() {
                         let class_id = u32::from_be_bytes(cur[b"CLAS"][..].try_into().unwrap());
-                        bag.class_keys.insert(class_id, ClassKeyData::from_map(cur));
+                        bag.class_keys
+                            .insert(class_id, ClassKeyData::from_map(&cur));
                     }
                     let mut map = HashMap::new();
                     map.insert(tag, data);
@@ -90,7 +91,8 @@ impl BackupKeyBag {
         // don't forget the last one
         if let Some(cur) = current {
             let class_id = u32::from_be_bytes(cur[b"CLAS"][..].try_into().unwrap());
-            bag.class_keys.insert(class_id, ClassKeyData::from_map(cur));
+            bag.class_keys
+                .insert(class_id, ClassKeyData::from_map(&cur));
         }
         bag
     }
@@ -110,7 +112,7 @@ pub struct ClassKeyData {
 impl ClassKeyData {
     /// Build a [`ClassKeyData`] from a TLV attribute map.
     #[must_use]
-    pub fn from_map(map: HashMap<[u8; 4], Vec<u8>>) -> ClassKeyData {
+    pub fn from_map(map: &HashMap<[u8; 4], Vec<u8>>) -> ClassKeyData {
         // Prefer WPKY, fallback to PBKY for persistent key
         let wpky = map
             .get(b"WPKY")

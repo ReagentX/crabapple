@@ -26,7 +26,7 @@ pub struct ManifestLockdownInfo {
 
 impl ManifestLockdownInfo {
     /// Parse from plist
-    pub(crate) fn from_plist(plist_data: Value) -> Result<ManifestLockdownInfo> {
+    pub(crate) fn from_plist(plist_data: &Value) -> Result<ManifestLockdownInfo> {
         let dict = plist_data.as_dictionary().ok_or_else(|| {
             BackupError::PlistParseError("ManifestLockdownInfo plist is not a dictionary".into())
         })?;

@@ -52,7 +52,7 @@ impl Backup {
     ///
     /// # Errors
     /// Returns `BackupError` if paths are invalid, manifest loading fails, or decryption fails.
-    pub fn new<P: AsRef<Path>>(backup_path: P, auth: Authentication) -> Result<Self> {
+    pub fn new<P: AsRef<Path>>(backup_path: P, auth: &Authentication) -> Result<Self> {
         let device_backup_path = backup_path.as_ref().to_path_buf();
         if !device_backup_path.is_dir() {
             return Err(BackupError::InvalidBackupRoot(
@@ -83,14 +83,14 @@ impl Backup {
             })?;
 
             let main_derived_key = match auth {
-                Authentication::Password(ref password) => derive_key_from_password(
+                Authentication::Password(password) => derive_key_from_password(
                     password.as_bytes(),
                     &backup_key_bag.dpsl,
                     backup_key_bag.dpic,
                     &backup_key_bag.salt,
                     backup_key_bag.iter,
                 )?,
-                Authentication::DerivedKey(ref key_hex) => hex_decode(key_hex)?,
+                Authentication::DerivedKey(key_hex) => hex_decode(key_hex)?,
             };
 
             let unlocked_keys_map = unlock_keys_from_manifest(&main_derived_key, &manifest)?;
