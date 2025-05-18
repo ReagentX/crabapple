@@ -17,6 +17,7 @@ pub struct FileKey {
 }
 
 impl FileKey {
+    #[must_use]
     pub fn new(key: Vec<u8>) -> Self {
         FileKey { key }
     }
@@ -87,12 +88,12 @@ impl MBFile {
     /// use crabapple::backup::models::file::MBFile;
     ///
     /// let plist: Value = /* load your plist here */ unimplemented!();
-    /// let mb = MBFile::from_plist(plist).unwrap();
+    /// let mb = MBFile::from_plist(&plist).unwrap();
     /// println!("Size: {} bytes", mb.size);
     /// ```
-    pub fn from_plist(plist_data: Value) -> Result<MBFile> {
+    pub fn from_plist(plist_data: &Value) -> Result<MBFile> {
         // parse top-level dictionary
-        let dict = as_dictionary(&plist_data)?;
+        let dict = as_dictionary(plist_data)?;
 
         let root_uid = dict
             .get("$top")
@@ -161,6 +162,7 @@ pub struct BackupFileEntry {
 }
 
 impl BackupFileEntry {
+    #[must_use]
     pub fn source(&self) -> PathBuf {
         PathBuf::from(&self.file_id[0..2]).join(&self.file_id)
     }

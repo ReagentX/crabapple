@@ -76,6 +76,7 @@ impl ManifestDb {
             // 4. Decrypt `ciphertext` with AES-256-CBC (zero IV), stripping PKCS#7 padding.
             // TODO: this is repeated in `Backup::get_file_decrypted_copy`, clean it up
             let (class_bytes, key_bytes) = manifest_key_bytes.split_at(4);
+            // TODO: Remove unsafe unwrap
             let manifest_class = u32::from_le_bytes(class_bytes.try_into().unwrap());
 
             let class_key_entry = manifest_data.get_class_key(manifest_class)?;
@@ -93,7 +94,7 @@ impl ManifestDb {
 
             // Stream-decrypt directly into the temp file
             copy(&mut decrypted_manifest_db_stream, &mut file).map_err(|e| {
-                BackupError::Crypto(format!("Failed writing decrypted Manifest.db: {}", e))
+                BackupError::Crypto(format!("Failed writing decrypted Manifest.db: {e}"))
             })?;
 
             DecryptedManifestDb {
@@ -195,13 +196,12 @@ pub fn query_all_files(conn: &Connection) -> Result<Vec<BackupFileEntry>> {
 
         let blob = conn
             .blob_open(rusqlite::DatabaseName::Main, "Files", "file", file_id, true)
-            .ok()
-            .unwrap();
+            .map_err(BackupError::Database)?;
 
         let plist = Value::from_reader(blob)
             .map_err(|_| BackupError::InvalidTlvData("Failed to parse file plist".to_string()))?;
 
-        let mbfile = MBFile::from_plist(plist).map_err(|_| {
+        let mbfile = MBFile::from_plist(&plist).map_err(|_| {
             BackupError::InvalidTlvData("Failed to parse MBFile from plist".to_string())
         })?;
 
@@ -255,13 +255,12 @@ pub fn query_file_by_id(conn: &Connection, path: &str) -> Result<Option<BackupFi
 
         let blob = conn
             .blob_open(rusqlite::DatabaseName::Main, "Files", "file", file_id, true)
-            .ok()
-            .unwrap();
+            .map_err(BackupError::Database)?;
 
         let plist = Value::from_reader(blob)
             .map_err(|_| BackupError::InvalidTlvData("Failed to parse file plist".to_string()))?;
 
-        let mbfile = MBFile::from_plist(plist).map_err(|_| {
+        let mbfile = MBFile::from_plist(&plist).map_err(|_| {
             BackupError::InvalidTlvData("Failed to parse MBFile from plist".to_string())
         })?;
 

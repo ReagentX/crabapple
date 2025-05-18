@@ -45,3 +45,30 @@ impl ManifestLockdownInfo {
         })
     }
 }
+
+#[cfg(test)]
+mod tests_types {
+    use plist::Value;
+
+    use crate::backup::models::manifest_data::lockdown::ManifestLockdownInfo;
+
+    #[test]
+    fn test_manifest_lockdown_info_from_plist() {
+        // Build a plist dictionary
+        let mut dict = plist::Dictionary::new();
+        dict.insert("BuildVersion".into(), Value::String("1.2.3".into()));
+        dict.insert("DeviceName".into(), Value::String("TestDevice".into()));
+        dict.insert("ProductType".into(), Value::String("TestType".into()));
+        dict.insert("ProductVersion".into(), Value::String("14.0".into()));
+        dict.insert("SerialNumber".into(), Value::String("SN123".into()));
+        dict.insert("UniqueDeviceID".into(), Value::String("UDID456".into()));
+        let value = Value::Dictionary(dict.clone());
+        let info = ManifestLockdownInfo::from_plist(&value).unwrap();
+        assert_eq!(info.build_version, "1.2.3");
+        assert_eq!(info.device_name, "TestDevice");
+        assert_eq!(info.product_type, "TestType");
+        assert_eq!(info.product_version, "14.0");
+        assert_eq!(info.serial_number, "SN123");
+        assert_eq!(info.unique_device_id, "UDID456");
+    }
+}

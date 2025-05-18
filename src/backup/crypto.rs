@@ -1,20 +1,26 @@
 //! Cryptographic routines for key derivation (`PBKDF2`), `AES` key wrap/unwrap, and `CBC` encryption/decryption.
 
-use crate::error::{BackupError, Result};
-use std::collections::HashMap;
-use std::io::{self, BufReader, Read};
-
-use aes::cipher::{
-    BlockDecryptMut, BlockEncryptMut, KeyIvInit, block_padding::Pkcs7, generic_array::GenericArray,
+use std::{
+    collections::HashMap,
+    io::{self, BufReader, Read},
 };
-use aes::{Aes128, Aes192, Aes256};
+
+use aes::{
+    Aes128, Aes192, Aes256,
+    cipher::{
+        BlockDecryptMut, BlockEncryptMut, KeyIvInit, block_padding::Pkcs7,
+        generic_array::GenericArray,
+    },
+};
 use aes_kw::Kek;
 use pbkdf2::pbkdf2_hmac;
 use sha1::Sha1;
 use sha2::Sha256;
 
-use super::models::keyring::ProtectionClassKey;
-use super::models::manifest_data::manifest::Manifest;
+use crate::{
+    backup::models::{keyring::ProtectionClassKey, manifest_data::manifest::Manifest},
+    error::{BackupError, Result},
+};
 
 // Define CBC mode for AES-256
 type Aes256CbcDec = cbc::Decryptor<Aes256>;
@@ -97,21 +103,23 @@ pub fn unlock_keys_from_manifest(
 
     for (class_id, class_key_data) in &key_bag.class_keys {
         // Skip classes without WPKY
-        let wpky = if let Some(w) = &class_key_data.wpky {
-            w
-        } else {
+        let Some(wpky) = &class_key_data.wpky else {
             continue;
         };
 
         // Check wrap flags for passcode protection (bit 0x02)
-        let wrap_bytes = if let Some(w) = &class_key_data.wrap {
-            w
-        } else {
+        let Some(wrap_bytes) = &class_key_data.wrap else {
             continue;
         };
 
         // Parse wrap flag as big-endian u32
-        let wrap_val = u32::from_be_bytes(wrap_bytes.as_slice().try_into().unwrap());
+        let wrap_val = u32::from_be_bytes(
+            wrap_bytes
+                .as_slice()
+                .try_into()
+                .map_err(|_| BackupError::KeyUnwrapFailed(*class_id))?,
+        );
+
         if wrap_val & 0x02 == 0 {
             continue; // Skip keys not protected by passcode
         }
@@ -332,14 +340,13 @@ pub fn aes_decrypt_cbc_reader<R: Read>(
     let mut lookahead = [0u8; 16];
     let n = buf_reader
         .read(&mut lookahead)
-        .map_err(|e| BackupError::Crypto(format!("I/O error: {}", e)))?;
+        .map_err(|e| BackupError::Crypto(format!("I/O error: {e}")))?;
     if n == 0 {
         return Err(BackupError::Crypto("Ciphertext empty".into()));
     }
     if n != 16 {
         return Err(BackupError::Crypto(format!(
-            "Unexpected ciphertext length: {}",
-            n
+            "Unexpected ciphertext length: {n}"
         )));
     }
     let iv = GenericArray::from_slice(&[0u8; 16]);
@@ -405,10 +412,7 @@ impl<R: Read> Read for AesCbcDecryptReader<R> {
                     .clone()
                     .decrypt_padded_mut::<Pkcs7>(&mut tail)
                     .map_err(|e| {
-                        io::Error::new(
-                            io::ErrorKind::InvalidData,
-                            format!("Padding error: {:?}", e),
-                        )
+                        io::Error::new(io::ErrorKind::InvalidData, format!("Padding error: {e:?}"))
                     })?;
                 self.buf.clear();
                 self.buf.extend_from_slice(pt);

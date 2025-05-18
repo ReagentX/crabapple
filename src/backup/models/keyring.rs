@@ -48,6 +48,7 @@ impl BackupKeyBag {
         let mut current: Option<HashMap<[u8; 4], Vec<u8>>> = None;
         for (tag, data) in tlv_blocks(blob) {
             // if a 4‐byte value, interpret as big‐endian u32
+            // TODO: add some `TryFromSliceError` and return a `Result` from this function
             if data.len() == 4 {
                 let v = u32::from_be_bytes(data.as_slice().try_into().unwrap());
                 if &tag == b"TYPE" {
@@ -55,6 +56,7 @@ impl BackupKeyBag {
                     continue;
                 }
             }
+
             match &tag {
                 b"UUID" if bag.uuid.is_empty() => bag.uuid = data,
                 b"WRAP" if bag.wrap.is_empty() => bag.wrap = data,
@@ -84,8 +86,11 @@ impl BackupKeyBag {
                         || b"KTYP".as_ref() == &t[..]
                         || b"WRAP" == &t[..]) =>
                 {
+                    // This unwrap is safe because we just checked that current is Some
+                    // Eventually `if let` guards should be used, but they are not stable yet
                     current.as_mut().unwrap().insert(tag, data);
                 }
+                // For any other tags, add them to the attrs map
                 _ => {
                     bag.attrs.insert(tag, data);
                 }
@@ -139,4 +144,59 @@ pub struct ProtectionClassKey {
     pub class_id: u32,
     /// Raw decrypted `AES` key.
     pub key: Vec<u8>,
+}
+
+#[cfg(test)]
+mod tests_types {
+    use std::collections::HashMap;
+
+    use crate::backup::models::keyring::{BackupKeyBag, ClassKeyData};
+
+    #[test]
+    fn test_backup_key_bag_from_bytes_basic() {
+        // Construct a simple TLV blob: TYPE=1, DPSL=b"aa", DPIC=2, SALT=b"bb", ITER=3
+        let mut blob = Vec::new();
+        // TYPE
+        blob.extend(b"TYPE");
+        blob.extend(&4u32.to_be_bytes());
+        blob.extend(&1u32.to_be_bytes());
+        // DPSL
+        blob.extend(b"DPSL");
+        blob.extend(&2u32.to_be_bytes());
+        blob.extend(b"aa");
+        // DPIC
+        blob.extend(b"DPIC");
+        blob.extend(&4u32.to_be_bytes());
+        blob.extend(&2u32.to_be_bytes());
+        // SALT
+        blob.extend(b"SALT");
+        blob.extend(&2u32.to_be_bytes());
+        blob.extend(b"bb");
+        // ITER
+        blob.extend(b"ITER");
+        blob.extend(&4u32.to_be_bytes());
+        blob.extend(&3u32.to_be_bytes());
+        let bag = BackupKeyBag::from_bytes(&blob);
+
+        assert_eq!(bag.bag_type, 1);
+        assert_eq!(bag.dpsl, b"aa");
+        assert_eq!(bag.dpic, 2);
+        assert_eq!(bag.salt, b"bb");
+        assert_eq!(bag.iter, 3);
+        // No class keys parsed
+        assert!(bag.class_keys.is_empty());
+    }
+
+    #[test]
+    fn test_class_key_data_prefer_wpky() {
+        let mut map: HashMap<[u8; 4], Vec<u8>> = HashMap::new();
+        map.insert(*b"PBKY", b"pb".to_vec());
+        map.insert(*b"WPKY", b"wp".to_vec());
+        map.insert(*b"WRAP", b"wr".to_vec());
+        map.insert(*b"UUID", b"id".to_vec());
+        let ck = ClassKeyData::from_map(&map);
+        assert_eq!(ck.wpky.unwrap(), b"wp".to_vec());
+        assert_eq!(ck.wrap.unwrap(), b"wr".to_vec());
+        assert_eq!(ck.uuid.unwrap(), b"id".to_vec());
+    }
 }

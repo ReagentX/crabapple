@@ -1,7 +1,6 @@
 //! Hexadecimal encoding and decoding functions.
 
-use crate::Result;
-use crate::error::BackupError;
+use crate::{Result, error::BackupError};
 
 /// Decode a hexadecimal string into a byte vector.
 ///

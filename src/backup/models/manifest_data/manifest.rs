@@ -1,14 +1,19 @@
 //! Backup Manifest representation and parsing.
 
+use std::{collections::HashMap, fs::File, path::Path};
+
 use plist::Value;
-use std::path::Path;
-use std::{collections::HashMap, fs::File};
 
-use crate::backup::models::keyring::{BackupKeyBag, ProtectionClassKey};
-use crate::backup::util::plist::{get_key_as_boolean, get_key_as_data};
-use crate::error::{BackupError, Result};
-
-use super::lockdown::ManifestLockdownInfo;
+use crate::{
+    backup::{
+        models::{
+            keyring::{BackupKeyBag, ProtectionClassKey},
+            manifest_data::lockdown::ManifestLockdownInfo,
+        },
+        util::plist::{get_key_as_boolean, get_key_as_data},
+    },
+    error::{BackupError, Result},
+};
 
 /// Holds in-memory parsed manifest (`Manifest.plist`) and associated decryption key and unwrapped class keys.
 ///
