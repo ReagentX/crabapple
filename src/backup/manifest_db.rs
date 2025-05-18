@@ -8,7 +8,7 @@ use crate::{
     backup::{
         crypto::{aes_decrypt_cbc_reader, aes_kw_unwrap_bytes},
         models::{
-            file::{BackupFileEntry, MBFile},
+            file::{BackupFileEntry, FileKeyPair, MBFile},
             manifest_data::database::DecryptedManifestDb,
             manifest_data::manifest::ManifestData,
         },
@@ -75,14 +75,13 @@ impl ManifestDb {
             // 3. Unwrap the file-specific AES key using AES-Key-Wrap.
             // 4. Decrypt `ciphertext` with AES-256-CBC (zero IV), stripping PKCS#7 padding.
             // TODO: this is repeated in `Backup::get_file_decrypted_copy`, clean it up
-            let (class_bytes, key_bytes) = manifest_key_bytes.split_at(4);
-            // TODO: Remove unsafe unwrap
-            let manifest_class = u32::from_le_bytes(class_bytes.try_into().unwrap());
+            let manifest_file_key = FileKeyPair::new(manifest_key_bytes);
 
-            let class_key_entry = manifest_data.get_class_key(manifest_class)?;
+            let class_key_entry =
+                manifest_data.get_class_key(manifest_file_key.protection_class_id)?;
 
-            let key = aes_kw_unwrap_bytes(&class_key_entry.key, key_bytes)
-                .map_err(|_| BackupError::KeyUnwrapFailed(manifest_class))?;
+            let key = aes_kw_unwrap_bytes(&class_key_entry.key, &manifest_file_key.file_key)
+                .map_err(|_| BackupError::KeyUnwrapFailed(manifest_file_key.protection_class_id))?;
 
             // Decrypt the Manifest.db using the unwrapped key
             let db_bytes = File::open(db_path)?;

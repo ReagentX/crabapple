@@ -1,6 +1,9 @@
 //! Backup key bags and class key models.
 
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    ops::{Deref, DerefMut},
+};
 
 use crate::backup::util::tlv::tlv_blocks;
 
@@ -137,13 +140,44 @@ impl ClassKeyData {
     }
 }
 
+#[derive(Debug, Clone)]
+/// Wrapper type for an `AES` key encryption key used in key wrapping and unwrapping.
+///
+/// This newtype wraps a `Vec<u8>` representing a master or class key for `AES` key wrap (`RFC 3394`).
+pub struct KeyEncryptionKey(Vec<u8>);
+
+impl AsRef<[u8]> for KeyEncryptionKey {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl From<Vec<u8>> for KeyEncryptionKey {
+    fn from(v: Vec<u8>) -> KeyEncryptionKey {
+        KeyEncryptionKey(v)
+    }
+}
+
+impl Deref for KeyEncryptionKey {
+    type Target = Vec<u8>;
+    fn deref(&self) -> &Vec<u8> {
+        &self.0
+    }
+}
+
+impl DerefMut for KeyEncryptionKey {
+    fn deref_mut(&mut self) -> &mut Vec<u8> {
+        &mut self.0
+    }
+}
+
 /// Stores a decrypted `AES` key for a specific protection class.
 #[derive(Debug, Clone)]
 pub struct ProtectionClassKey {
     /// Numeric class identifier
     pub class_id: u32,
     /// Raw decrypted `AES` key.
-    pub key: Vec<u8>,
+    pub key: KeyEncryptionKey,
 }
 
 #[cfg(test)]

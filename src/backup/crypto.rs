@@ -18,7 +18,11 @@ use sha1::Sha1;
 use sha2::Sha256;
 
 use crate::{
-    backup::models::{keyring::ProtectionClassKey, manifest_data::manifest::Manifest},
+    backup::models::{
+        file::WrappedKey,
+        keyring::{KeyEncryptionKey, ProtectionClassKey},
+        manifest_data::manifest::Manifest,
+    },
     error::{BackupError, Result},
 };
 
@@ -86,7 +90,7 @@ pub fn derive_key_from_password(
 /// # Errors
 /// Returns `BackupError::Crypto` or `KeyUnwrapFailed` if unwrapping fails.
 pub fn unlock_keys_from_manifest(
-    main_key: &[u8],
+    main_key: &KeyEncryptionKey,
     plist_info: &Manifest,
 ) -> Result<HashMap<u32, ProtectionClassKey>> {
     if main_key.len() != 32 {
@@ -125,14 +129,14 @@ pub fn unlock_keys_from_manifest(
         }
 
         // Unwrap class key using AES key wrap (RFC 3394)
-        let unwrapped = aes_kw_unwrap_bytes(main_key, wpky)
+        let unwrapped = aes_kw_unwrap_bytes(main_key, &WrappedKey::from(wpky.clone()))
             .map_err(|_| BackupError::KeyUnwrapFailed(*class_id))?;
 
         unlocked_keys.insert(
             *class_id,
             ProtectionClassKey {
                 class_id: *class_id,
-                key: unwrapped,
+                key: unwrapped.into(),
             },
         );
     }
@@ -262,7 +266,10 @@ pub fn aes_encrypt_cbc_with_padding(data: &[u8], key: &[u8]) -> Result<Vec<u8>> 
 ///
 /// # Errors
 /// Returns [`BackupError::Crypto`] if the unwrapping fails.
-pub(crate) fn aes_kw_unwrap_bytes(kek_bytes: &[u8], wrapped_data: &[u8]) -> Result<Vec<u8>> {
+pub(crate) fn aes_kw_unwrap_bytes(
+    kek_bytes: &KeyEncryptionKey,
+    wrapped_data: &WrappedKey,
+) -> Result<Vec<u8>> {
     if wrapped_data.len() <= 8 {
         return Err(BackupError::Crypto(format!(
             "Wrapped data is too short ({} bytes)",
@@ -476,7 +483,7 @@ mod tests {
         assert_eq!(plaintext, data);
     }
 
-    fn wrap_and_unwrap(kek_bytes: &[u8], plain: &[u8]) {
+    fn wrap_and_unwrap(kek_bytes: &KeyEncryptionKey, plain: &[u8]) {
         let mut wrapped = vec![0u8; plain.len() + 8];
         match kek_bytes.len() {
             16 => {
@@ -493,27 +500,27 @@ mod tests {
             }
             _ => panic!("Invalid KEK length"),
         }
-        let unwrapped = aes_kw_unwrap_bytes(kek_bytes, &wrapped).unwrap();
+        let unwrapped = aes_kw_unwrap_bytes(kek_bytes, &wrapped.into()).unwrap();
         assert_eq!(unwrapped, plain);
     }
 
     #[test]
     fn test_key_wrap_unwrap_128() {
-        let kek = [0x0b; 16];
+        let kek = vec![0x0b; 16].into();
         let data = b"12345678ABCDEFGH";
         wrap_and_unwrap(&kek, data);
     }
 
     #[test]
     fn test_key_wrap_unwrap_192() {
-        let kek = [0x0c; 24];
+        let kek = vec![0x0c; 24].into();
         let data = b"12345678ABCDEFGH";
         wrap_and_unwrap(&kek, data);
     }
 
     #[test]
     fn test_key_wrap_unwrap_256() {
-        let kek = [0x0d; 32];
+        let kek = vec![0x0d; 32].into();
         let data = b"12345678ABCDEFGH";
         wrap_and_unwrap(&kek, data);
     }
@@ -521,17 +528,17 @@ mod tests {
     #[test]
     fn test_aes_kw_unwrap_errors() {
         // Wrapped data too short
-        let kek = vec![0u8; 16];
+        let kek = vec![0u8; 16].into();
         let short_data = vec![0u8; 8];
-        let err = aes_kw_unwrap_bytes(&kek, &short_data).unwrap_err();
+        let err = aes_kw_unwrap_bytes(&kek, &WrappedKey::from(short_data)).unwrap_err();
         match err {
             BackupError::Crypto(msg) => assert!(msg.contains("too short")),
             _ => panic!("Expected Crypto error for short data"),
         }
         // Invalid KEK length
-        let invalid_kek = vec![0u8; 10];
+        let invalid_kek = vec![0u8; 10].into();
         let wrapped = vec![0u8; 16];
-        let err2 = aes_kw_unwrap_bytes(&invalid_kek, &wrapped).unwrap_err();
+        let err2 = aes_kw_unwrap_bytes(&invalid_kek, &WrappedKey::from(wrapped)).unwrap_err();
         match err2 {
             BackupError::Crypto(msg) => assert!(msg.contains("Invalid KEK length")),
             _ => panic!("Expected Crypto error for invalid KEK length"),
@@ -560,7 +567,8 @@ mod tests {
                 }
                 _ => unreachable!(),
             }
-            let unwrapped = aes_kw_unwrap_bytes(&kek_bytes, &wrapped).expect("Unwrap failed");
+            let unwrapped = aes_kw_unwrap_bytes(&kek_bytes.into(), &WrappedKey::from(wrapped))
+                .expect("Unwrap failed");
             assert_eq!(unwrapped, plain);
         }
     }

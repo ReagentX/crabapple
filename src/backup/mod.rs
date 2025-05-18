@@ -25,6 +25,7 @@ use crate::{
         models::{
             auth::Authentication,
             file::BackupFileEntry,
+            keyring::KeyEncryptionKey,
             manifest_data::{
                 database::DecryptedManifestDb,
                 lockdown::ManifestLockdownInfo,
@@ -102,8 +103,10 @@ impl Backup {
                 Authentication::DerivedKey(key_hex) => hex_decode(key_hex)?,
             };
 
-            let unlocked_keys_map = unlock_keys_from_manifest(&main_derived_key, &manifest)?;
-            (Some(main_derived_key), Some(unlocked_keys_map))
+            let main_key = KeyEncryptionKey::from(main_derived_key);
+
+            let unlocked_keys_map = unlock_keys_from_manifest(&main_key, &manifest)?;
+            (Some(main_key), Some(unlocked_keys_map))
         } else {
             // For unencrypted backups, password/key should ideally not be provided or be empty.
             // This logic can be refined based on desired strictness.
@@ -339,7 +342,7 @@ impl Backup {
 
     /// Retrieve the raw 32-byte decryption key, if available.
     #[must_use]
-    pub fn get_decryption_key(&self) -> Option<Vec<u8>> {
+    pub fn get_decryption_key(&self) -> Option<KeyEncryptionKey> {
         self.manifest_data.main_decryption_key.clone()
     }
 
@@ -377,13 +380,11 @@ impl Backup {
         let data = read(&source)?;
 
         if let Some(encryption_key) = &entry.metadata.encryption_key {
-            let (_, key_bytes) = encryption_key.get_class_key();
-
             let class_key_entry = self
                 .manifest_data
                 .get_class_key(entry.metadata.protection_class)?;
 
-            let key = aes_kw_unwrap_bytes(&class_key_entry.key, key_bytes)
+            let key = aes_kw_unwrap_bytes(&class_key_entry.key, &encryption_key.file_key)
                 .map_err(|_| BackupError::KeyUnwrapFailed(class_key_entry.class_id))?;
 
             aes_decrypt_cbc_with_padding(&data, &key)
@@ -426,13 +427,11 @@ impl Backup {
         let ciphertext = File::open(self.backup_path.join(entry.source()))?;
 
         if let Some(encryption_key) = &entry.metadata.encryption_key {
-            let (_, key_bytes) = encryption_key.get_class_key();
-
             let class_key_entry = self
                 .manifest_data
                 .get_class_key(entry.metadata.protection_class)?;
 
-            let key = aes_kw_unwrap_bytes(&class_key_entry.key, key_bytes)
+            let key = aes_kw_unwrap_bytes(&class_key_entry.key, &encryption_key.file_key)
                 .map_err(|_| BackupError::KeyUnwrapFailed(class_key_entry.class_id))?;
 
             return crypto::aes_decrypt_cbc_reader(ciphertext, &key);

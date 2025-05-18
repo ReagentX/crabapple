@@ -1,5 +1,5 @@
 //! File metadata and cryptographic information for backup entries.
-use std::path::PathBuf;
+use std::{ops::Deref, path::PathBuf};
 
 use plist::Value;
 
@@ -9,39 +9,60 @@ use crate::{
 };
 
 #[derive(Debug, Clone)]
-// The first 4 bytes of a key are interpreted as a little-endian
-// `u32` protection class identifier. The remainder is treated as an AES-key-wrapped
-// file key (`RFC 3394`).
-pub struct FileKey {
-    key: Vec<u8>,
+pub struct FileKeyPair {
+    pub protection_class_id: u32,
+    pub file_key: WrappedKey,
 }
 
-impl FileKey {
-    #[must_use]
-    pub fn new(key: Vec<u8>) -> Self {
-        FileKey { key }
-    }
-
-    /// Get the protection class identifier and the key blob.
+impl FileKeyPair {
+    /// Deserialize the protection class identifier and the key blob for a file.
     ///
-    /// # Returns
-    /// A tuple containing the 4-byte class identifier and the remaining key bytes.
+    /// The first 4 bytes of a key are interpreted as a little-endian
+    /// `u32` protection class identifier. The remainder is treated as an AES-key-wrapped
+    /// file key (`RFC 3394`).
     ///
     /// # Examples
     ///
-    /// ```no_run
-    /// use crabapple::backup::models::file::FileKey;
-    ///
-    /// let bytes = &[0,0,0,1, 0xAA,0xBB,0xCC];
-    /// let fk = FileKey::new(bytes.to_vec());
-    /// let (class_id_bytes, key_blob) = fk.get_class_key();
-    ///
-    /// assert_eq!(class_id_bytes, &[0,0,0,1]);
-    /// assert_eq!(key_blob, &[0xAA,0xBB,0xCC]);
     /// ```
-    #[must_use]
-    pub fn get_class_key(&self) -> (&[u8], &[u8]) {
-        self.key.split_at(4)
+    /// use crabapple::backup::models::file::FileKeyPair;
+    ///
+    /// let bytes = &[1, 0, 0, 0, 0xAA, 0xBB, 0xCC];
+    /// let fk = FileKeyPair::new(bytes);
+    ///
+    /// assert_eq!(fk.protection_class_id, 1);
+    /// ```
+    pub fn new(key: &[u8]) -> Self {
+        let parts = key.split_at(4);
+        FileKeyPair {
+            protection_class_id: u32::from_le_bytes(parts.0.try_into().unwrap()),
+            file_key: WrappedKey(parts.1.to_vec()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+/// Wrapper type for an `AES`-wrapped file key used in backup file encryption.
+///
+/// This newtype wraps a `Vec<u8>` representing a file encryption key that has been
+/// wrapped using the AES key wrap algorithm (`RFC 3394`).
+pub struct WrappedKey(Vec<u8>);
+
+impl AsRef<[u8]> for WrappedKey {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl From<Vec<u8>> for WrappedKey {
+    fn from(v: Vec<u8>) -> WrappedKey {
+        WrappedKey(v)
+    }
+}
+
+impl Deref for WrappedKey {
+    type Target = Vec<u8>;
+    fn deref(&self) -> &Vec<u8> {
+        &self.0
     }
 }
 
@@ -69,7 +90,7 @@ pub struct MBFile {
     /// Protection class identifier for the file.
     pub protection_class: u32,
     /// Optional wrapped encryption key blob (includes class in first 4 bytes).
-    pub encryption_key: Option<FileKey>,
+    pub encryption_key: Option<FileKeyPair>,
 }
 
 impl MBFile {
@@ -125,7 +146,7 @@ impl MBFile {
                 })?;
 
             let data = get_key_as_data(data_dict, "NS.data")?;
-            Some(FileKey::new(data.clone()))
+            Some(FileKeyPair::new(&data))
         } else {
             None
         };

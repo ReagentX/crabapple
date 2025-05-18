@@ -2,7 +2,7 @@
 
 Crabapple is a Rust library for reading, inspecting, and extracting data from encrypted iOS backups created by Finder, Apple Devices, or iTunes.
 
-# ⚠️ Warning ⚠️
+## ⚠️ Warning ⚠️
 
 This library is currently in an alpha state and should not be used in production code.
 
@@ -63,8 +63,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 You can retrieve device metadata (like device name, iOS version, and UDID) without opening the full backup database:
 
 ```rust,no_run
-use crabapple::get_device_basic_info;
 use std::path::Path;
+use crabapple::get_device_basic_info;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let udid_folder = Path::new("/Users/you/Library/Application Support/MobileSync/Backup/DEVICE_UDID");
