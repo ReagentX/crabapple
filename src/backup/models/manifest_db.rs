@@ -15,7 +15,7 @@ use crate::{
         crypto::{AesCbcDecryptReader, aes_kw_unwrap},
         models::{
             file::{BackupFileEntry, FileKeyPair, MBFile},
-            manifest_data::manifest::ManifestData,
+            manifest::manifest_plist::Manifest,
         },
         util::hex::hex_encode,
     },
@@ -58,23 +58,22 @@ impl ManifestDb {
     /// let db_path = backup.get_manifest_db_path();
     /// # Ok::<(), crabapple::error::BackupError>(())
     /// ```
-    pub fn new(db_path: &Path, manifest_data: &ManifestData) -> Result<Self> {
+    pub fn new(db_path: &Path, manifest_data: &Manifest) -> Result<Self> {
         if !db_path.exists() {
             return Err(BackupError::ManifestDbNotFound);
         }
 
-        let decrypted_db_info = if manifest_data.manifest.is_encrypted {
-            let manifest_key_bytes =
-                manifest_data
-                    .manifest
-                    .manifest_key
-                    .as_ref()
-                    .ok_or_else(|| {
-                        BackupError::Crypto(
-                            "ManifestKey data not found in PlistInfo for encrypted Manifest.db"
-                                .to_string(),
-                        )
-                    })?;
+        let decrypted_db_info = if manifest_data.manifest_data.is_encrypted {
+            let manifest_key_bytes = manifest_data
+                .manifest_data
+                .manifest_key
+                .as_ref()
+                .ok_or_else(|| {
+                    BackupError::Crypto(
+                        "ManifestKey data not found in PlistInfo for encrypted Manifest.db"
+                            .to_string(),
+                    )
+                })?;
 
             // The first 4 bytes of `manifest_key_bytes` are interpreted as a little-endian
             // `u32` protection class identifier. The remainder is treated as an AES-key-wrapped

@@ -51,7 +51,7 @@ impl ManifestLockdownInfo {
 mod tests_types {
     use plist::Value;
 
-    use crate::backup::models::manifest_data::lockdown::ManifestLockdownInfo;
+    use crate::backup::models::manifest::lockdown::ManifestLockdownInfo;
 
     #[test]
     fn test_manifest_lockdown_info_from_plist() {

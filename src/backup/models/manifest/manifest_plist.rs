@@ -7,8 +7,8 @@ use plist::Value;
 use crate::{
     backup::{
         models::{
-            keyring::{KeyRing, EncryptionKey, ProtectionClassKey},
-            manifest_data::lockdown::ManifestLockdownInfo,
+            keyring::{EncryptionKey, KeyRing, ProtectionClassKey},
+            manifest::lockdown::ManifestLockdownInfo,
         },
         util::plist::{get_key_as_boolean, get_key_as_data},
     },
@@ -31,16 +31,16 @@ use crate::{
 /// assert!(!data.manifest.is_encrypted);
 /// ```
 #[derive(Debug, Clone)]
-pub struct ManifestData {
+pub struct Manifest {
     /// Parsed `Manifest.plist` data.
-    pub manifest: Manifest,
+    pub manifest_data: ManifestData,
     /// Derived decryption key (`32` bytes) if encrypted.
     pub main_decryption_key: Option<EncryptionKey>,
     /// Unwrapped per-class keys after decryption.
     pub unlocked_class_keys: Option<HashMap<u32, ProtectionClassKey>>,
 }
 
-impl ManifestData {
+impl Manifest {
     /// Get the `ProtectionClassKey` for a given protection class.
     ///
     /// # Errors
@@ -65,7 +65,7 @@ impl ManifestData {
 
 /// Parsed data from `Manifest.plist` describing the backup.
 #[derive(Debug, Clone)]
-pub struct Manifest {
+pub struct ManifestData {
     /// Optional key bag containing encrypted class keys.
     pub key_ring: Option<KeyRing>,
     /// Whether the backup is encrypted.
@@ -76,7 +76,7 @@ pub struct Manifest {
     pub manifest_key: Option<EncryptionKey>,
 }
 
-impl Manifest {
+impl ManifestData {
     /// Load and parse the backup's `Manifest.plist` file.
     ///
     /// Returns a [`Manifest`] struct containing metadata and encryption parameters.
@@ -122,7 +122,7 @@ impl Manifest {
             .get("Lockdown")
             .ok_or_else(|| BackupError::MissingPlistKey("Lockdown".into()))?;
         let lockdown = ManifestLockdownInfo::from_plist(lockdown_val)?;
-        Ok(Manifest {
+        Ok(ManifestData {
             key_ring: backup_key_ring,
             is_encrypted,
             lockdown,

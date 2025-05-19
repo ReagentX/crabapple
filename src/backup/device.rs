@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use crate::{
-    backup::models::manifest_data::{lockdown::ManifestLockdownInfo, manifest::Manifest},
+    backup::models::manifest::{lockdown::ManifestLockdownInfo, manifest_plist::ManifestData},
     error::{BackupError, Result},
 };
 
@@ -37,6 +37,6 @@ pub fn get_device_basic_info(device_backup_path: &Path) -> Result<ManifestLockdo
             plist_path.display().to_string(),
         ));
     }
-    let info = Manifest::load(&plist_path)?;
+    let info = ManifestData::load(&plist_path)?;
     Ok(info.lockdown)
 }

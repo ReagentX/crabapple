@@ -24,9 +24,9 @@ use crate::{
             auth::Authentication,
             file::BackupFileEntry,
             keyring::EncryptionKey,
-            manifest_data::{
+            manifest::{
                 lockdown::ManifestLockdownInfo,
-                manifest::{Manifest, ManifestData},
+                manifest_plist::{Manifest, ManifestData},
             },
             manifest_db::{ManifestDb, query_all_domains, query_all_files, query_file_by_id},
         },
@@ -43,7 +43,7 @@ pub struct Backup {
     /// Filesystem path to the specific device backup folder.
     pub backup_path: PathBuf,
     /// Parsed manifest and decryption state.
-    pub manifest_data: ManifestData,
+    pub manifest: Manifest,
     /// Decrypted manifest database handle, if available.
     manifest_db: ManifestDb,
     /// Connection to the manifest database
@@ -95,10 +95,10 @@ impl Backup {
         }
 
         // Load Manifest.plist and extract necessary keys and info
-        let manifest = Manifest::load(&manifest_plist)?;
+        let manifest_data = ManifestData::load(&manifest_plist)?;
 
-        let (main_decryption_key_opt, unlocked_class_keys_opt) = if manifest.is_encrypted {
-            let backup_key_ring = manifest.key_ring.as_ref().ok_or_else(|| {
+        let (main_decryption_key_opt, unlocked_class_keys_opt) = if manifest_data.is_encrypted {
+            let backup_key_ring = manifest_data.key_ring.as_ref().ok_or_else(|| {
                 BackupError::MissingPlistKey(
                     "BackupKeyBag (required for encrypted backup)".to_string(),
                 )
@@ -115,7 +115,7 @@ impl Backup {
                 Authentication::DerivedKey(key_hex) => hex_decode(key_hex)?.into(),
             };
 
-            let unlocked_keys_map = unlock_keys_from_manifest(&master_key, &manifest)
+            let unlocked_keys_map = unlock_keys_from_manifest(&master_key, &manifest_data)
                 .map_err(|_| BackupError::PasswordOrKeyIncorrect)?;
 
             (Some(master_key), Some(unlocked_keys_map))
@@ -126,8 +126,8 @@ impl Backup {
             (None, None)
         };
 
-        let manifest_data = ManifestData {
-            manifest, // Now contains the backup_date
+        let manifest_data = Manifest {
+            manifest_data, // Now contains the backup_date
             main_decryption_key: main_decryption_key_opt.clone(),
             unlocked_class_keys: unlocked_class_keys_opt.clone(),
         };
@@ -139,7 +139,7 @@ impl Backup {
 
         Ok(Self {
             backup_path: device_backup_path,
-            manifest_data,
+            manifest: manifest_data,
             manifest_db,
             db: conn,
         })
@@ -191,7 +191,7 @@ impl Backup {
     /// println!("Device name: {}", lockdown.device_name);
     /// # Ok::<(), crabapple::error::BackupError>(())
     pub fn lockdown(&self) -> &ManifestLockdownInfo {
-        &self.manifest_data.manifest.lockdown
+        &self.manifest.manifest_data.lockdown
     }
 
     /// Indicates whether the backup is encrypted.
@@ -200,7 +200,7 @@ impl Backup {
     /// # Returns
     /// `true` if the backup is encrypted, `false` otherwise.
     pub fn is_encrypted(&self) -> bool {
-        self.manifest_data.manifest.is_encrypted
+        self.manifest.manifest_data.is_encrypted
     }
 
     /// Returns the main decryption key as a hex string, if the backup is encrypted.
@@ -226,7 +226,7 @@ impl Backup {
     /// ```
     #[must_use]
     pub fn get_decryption_key_hex(&self) -> Option<String> {
-        self.manifest_data
+        self.manifest
             .main_decryption_key
             .as_ref()
             .map(|v| hex_encode(v))
@@ -369,7 +369,7 @@ impl Backup {
     /// # Returns
     /// An `Option<KeyEncryptionKey>` containing the main decryption key, or `None` if not encrypted.
     pub fn get_decryption_key(&self) -> Option<EncryptionKey> {
-        self.manifest_data.main_decryption_key.clone()
+        self.manifest.main_decryption_key.clone()
     }
 
     /// Access parsed `Manifest.plist` metadata.
@@ -377,8 +377,8 @@ impl Backup {
     ///
     /// # Returns
     /// A reference to the parsed [`Manifest`] object.
-    pub fn manifest(&self) -> &Manifest {
-        &self.manifest_data.manifest
+    pub fn manifest(&self) -> &ManifestData {
+        &self.manifest.manifest_data
     }
 
     /// Decrypt the file represented by [`BackupFileEntry`], returning plaintext bytes.
@@ -417,7 +417,7 @@ impl Backup {
 
         if let Some(encryption_key) = &entry.metadata.encryption_key {
             let class_key_entry = self
-                .manifest_data
+                .manifest
                 .get_class_key(entry.metadata.protection_class)?;
 
             let key = aes_kw_unwrap(&class_key_entry.key, &encryption_key.file_key)?;
@@ -464,7 +464,7 @@ impl Backup {
 
         if let Some(encryption_key) = &entry.metadata.encryption_key {
             let class_key_entry = self
-                .manifest_data
+                .manifest
                 .get_class_key(entry.metadata.protection_class)?;
 
             let key = aes_kw_unwrap(&class_key_entry.key, &encryption_key.file_key)?;

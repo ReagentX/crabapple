@@ -3,5 +3,5 @@
 pub mod auth;
 pub mod file;
 pub mod keyring;
-pub mod manifest_data;
+pub mod manifest;
 pub mod manifest_db;

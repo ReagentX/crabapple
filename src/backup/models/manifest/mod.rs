@@ -1,4 +1,4 @@
 //! Manifest data models
 
 pub mod lockdown;
-pub mod manifest;
+pub mod manifest_plist;

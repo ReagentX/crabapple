@@ -21,7 +21,7 @@ use crate::{
     backup::models::{
         file::WrappedKey,
         keyring::{EncryptionKey, ProtectionClassKey},
-        manifest_data::manifest::Manifest,
+        manifest::manifest_plist::ManifestData,
     },
     error::{BackupError, Result},
 };
@@ -91,7 +91,7 @@ pub fn derive_key_from_password(
 /// Returns [`BackupError::Crypto`] or [`BackupError::KeyUnwrapFailed`] if unwrapping fails.
 pub(crate) fn unlock_keys_from_manifest(
     master_key: &EncryptionKey,
-    manifest: &Manifest,
+    manifest: &ManifestData,
 ) -> Result<HashMap<u32, ProtectionClassKey>> {
     if master_key.len() != 32 {
         return Err(BackupError::Crypto(format!(
