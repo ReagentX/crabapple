@@ -20,15 +20,15 @@ use crate::{
 /// # Examples
 ///
 /// ```no_run
-/// use crabapple::backup::models::manifest_data::manifest::{Manifest, ManifestData};
+/// use crabapple::backup::models::manifest::manifest_plist::{Manifest, ManifestData};
 /// use std::path::Path;
 ///
 /// // Load the manifest
 /// let path = Path::new("/path/to/Manifest.plist");
-/// let manifest = Manifest::load(path).unwrap();
-/// let data = ManifestData { manifest, main_decryption_key: None, unlocked_class_keys: None };
+/// let data = ManifestData::load(path).unwrap();
+/// let manifest = Manifest { manifest_data: data, main_decryption_key: None, unlocked_class_keys: None };
 /// // For unencrypted backups, no keys are present
-/// assert!(!data.manifest.is_encrypted);
+/// assert!(!manifest.manifest_data.is_encrypted);
 /// ```
 #[derive(Debug, Clone)]
 pub struct Manifest {
@@ -91,11 +91,11 @@ impl ManifestData {
     /// # Examples
     ///
     /// ```no_run
-    /// use crabapple::backup::models::manifest_data::manifest::Manifest;
+    /// use crabapple::backup::models::manifest::manifest_plist::ManifestData;
     /// use std::path::Path;
     ///
-    /// let manifest = Manifest::load(Path::new("/path/to/Manifest.plist")).unwrap();
-    /// println!("Encrypted: {}", manifest.is_encrypted);
+    /// let data = ManifestData::load(Path::new("/path/to/Manifest.plist")).unwrap();
+    /// println!("Encrypted: {}", data.is_encrypted);
     /// ```
     pub fn load<P: AsRef<Path>>(path: P) -> Result<Self> {
         let path_ref = path.as_ref();
