@@ -140,7 +140,7 @@ impl ClassKeyData {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 /// Wrapper type for an `AES` key encryption key used in key wrapping and unwrapping.
 ///
 /// This newtype wraps a `Vec<u8>` representing a master or class key for `AES` key wrap (`RFC 3394`).

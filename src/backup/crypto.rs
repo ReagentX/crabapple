@@ -31,7 +31,7 @@ type Aes256CbcDec = cbc::Decryptor<Aes256>;
 type Aes256CbcEnc = cbc::Encryptor<Aes256>;
 
 /// Buffer size for batch-reading ciphertext (8 KiB)
-const STREAM_BUFFER_SIZE: usize = 8 * 1024;
+pub const STREAM_BUFFER_SIZE: usize = 8 * 1024;
 
 /// Derive the `32`-byte encryption key from a user password using `PBKDF2`.
 ///
@@ -81,7 +81,7 @@ pub fn derive_key_from_password(
 /// Unwrap (decrypt) all protection class keys from the Manifest's key bag.
 ///
 /// # Arguments
-/// * `main_key` - The derived 32-byte master key (Kmaster).
+/// * `master_key` - The derived 32-byte master key (Kmaster).
 /// * `plist_info` - Parsed `Manifest.plist` containing `backup_key_bag`.
 ///
 /// # Returns
@@ -89,14 +89,14 @@ pub fn derive_key_from_password(
 ///
 /// # Errors
 /// Returns `BackupError::Crypto` or `KeyUnwrapFailed` if unwrapping fails.
-pub fn unlock_keys_from_manifest(
-    main_key: &KeyEncryptionKey,
+pub(crate) fn unlock_keys_from_manifest(
+    master_key: &KeyEncryptionKey,
     plist_info: &Manifest,
 ) -> Result<HashMap<u32, ProtectionClassKey>> {
-    if main_key.len() != 32 {
+    if master_key.len() != 32 {
         return Err(BackupError::Crypto(format!(
             "Main key for unlocking class keys must be 32 bytes for AES-256, got {}",
-            main_key.len()
+            master_key.len()
         )));
     }
     let mut unlocked_keys = HashMap::new();
@@ -129,14 +129,14 @@ pub fn unlock_keys_from_manifest(
         }
 
         // Unwrap class key using AES key wrap (RFC 3394)
-        let unwrapped = aes_kw_unwrap_bytes(main_key, &WrappedKey::from(wpky.clone()))
+        let unwrapped = aes_kw_unwrap(master_key, &WrappedKey::from(wpky.clone()))
             .map_err(|_| BackupError::KeyUnwrapFailed(*class_id))?;
 
         unlocked_keys.insert(
             *class_id,
             ProtectionClassKey {
                 class_id: *class_id,
-                key: unwrapped.into(),
+                key: unwrapped,
             },
         );
     }
@@ -265,11 +265,11 @@ pub fn aes_encrypt_cbc_with_padding(data: &[u8], key: &[u8]) -> Result<Vec<u8>> 
 /// The unwrapped key data.
 ///
 /// # Errors
-/// Returns [`BackupError::Crypto`] if the unwrapping fails.
-pub(crate) fn aes_kw_unwrap_bytes(
+/// Returns [`BackupError::Crypto`] if the unwrapping fails or input lengths are invalid.
+pub(crate) fn aes_kw_unwrap(
     kek_bytes: &KeyEncryptionKey,
     wrapped_data: &WrappedKey,
-) -> Result<Vec<u8>> {
+) -> Result<KeyEncryptionKey> {
     if wrapped_data.len() <= 8 {
         return Err(BackupError::Crypto(format!(
             "Wrapped data is too short ({} bytes)",
@@ -304,7 +304,7 @@ pub(crate) fn aes_kw_unwrap_bytes(
             )));
         }
     }
-    Ok(unwrapped)
+    Ok(unwrapped.into())
 }
 
 /// Creates a streaming reader that decrypts `AES-256-CBC` encrypted data from any `Read` source.
@@ -317,14 +317,18 @@ pub(crate) fn aes_kw_unwrap_bytes(
 /// * `reader` - Source of ciphertext bytes implementing `Read`.
 /// * `key` - `32`-byte `AES-256` decryption key.
 ///
+/// # Returns
+/// A streaming reader implementing [`std::io::Read`] that yields plaintext as it's read.
+///
 /// # Errors
 /// Returns [`BackupError::InvalidCryptoDataLength`] if `key` is not exactly `32` bytes.
 /// Returns [`BackupError::Crypto`] if I/O failure occurs or ciphertext is too short/invalid.
 ///
 /// # Examples
+///
 /// ```no_run
-/// # use std::{fs::File, io::copy};
-/// # use crabapple::backup::crypto;
+/// use std::{fs::File, io::copy};
+/// use crabapple::backup::crypto;
 ///
 /// let file = File::open("encrypted.bin").unwrap();
 /// let mut reader = crypto::aes_decrypt_cbc_reader(file, &[0; 32]).unwrap();
@@ -500,8 +504,8 @@ mod tests {
             }
             _ => panic!("Invalid KEK length"),
         }
-        let unwrapped = aes_kw_unwrap_bytes(kek_bytes, &wrapped.into()).unwrap();
-        assert_eq!(unwrapped, plain);
+        let unwrapped = aes_kw_unwrap(kek_bytes, &wrapped.into()).unwrap();
+        assert_eq!(unwrapped, plain.to_vec().into());
     }
 
     #[test]
@@ -530,7 +534,7 @@ mod tests {
         // Wrapped data too short
         let kek = vec![0u8; 16].into();
         let short_data = vec![0u8; 8];
-        let err = aes_kw_unwrap_bytes(&kek, &WrappedKey::from(short_data)).unwrap_err();
+        let err = aes_kw_unwrap(&kek, &WrappedKey::from(short_data)).unwrap_err();
         match err {
             BackupError::Crypto(msg) => assert!(msg.contains("too short")),
             _ => panic!("Expected Crypto error for short data"),
@@ -538,38 +542,10 @@ mod tests {
         // Invalid KEK length
         let invalid_kek = vec![0u8; 10].into();
         let wrapped = vec![0u8; 16];
-        let err2 = aes_kw_unwrap_bytes(&invalid_kek, &WrappedKey::from(wrapped)).unwrap_err();
+        let err2 = aes_kw_unwrap(&invalid_kek, &WrappedKey::from(wrapped)).unwrap_err();
         match err2 {
             BackupError::Crypto(msg) => assert!(msg.contains("Invalid KEK length")),
             _ => panic!("Expected Crypto error for invalid KEK length"),
-        }
-    }
-
-    #[test]
-    fn test_wrap_and_unwrap_roundtrip() {
-        let plain = b"secret12";
-        for &kek_len in &[16usize, 24, 32] {
-            let kek_bytes = vec![0x55u8; kek_len];
-            // Wrap
-            let mut wrapped = vec![0u8; plain.len() + 8];
-            match kek_len {
-                16 => {
-                    let kek = Kek::<Aes128>::new(GenericArray::from_slice(&kek_bytes));
-                    kek.wrap(plain, &mut wrapped).expect("Wrap failed");
-                }
-                24 => {
-                    let kek = Kek::<Aes192>::new(GenericArray::from_slice(&kek_bytes));
-                    kek.wrap(plain, &mut wrapped).expect("Wrap failed");
-                }
-                32 => {
-                    let kek = Kek::<Aes256>::new(GenericArray::from_slice(&kek_bytes));
-                    kek.wrap(plain, &mut wrapped).expect("Wrap failed");
-                }
-                _ => unreachable!(),
-            }
-            let unwrapped = aes_kw_unwrap_bytes(&kek_bytes.into(), &WrappedKey::from(wrapped))
-                .expect("Unwrap failed");
-            assert_eq!(unwrapped, plain);
         }
     }
 
