@@ -12,20 +12,20 @@ use crate::{
 
 /// Represents the key bag from `Manifest.plist` containing encryption parameters and wrapped class keys.
 #[derive(Debug, Clone)]
-pub struct BackupKeyBag {
+pub struct KeyRing {
     /// Bag type identifier (backup key bag version).
     pub bag_type: u32,
-    /// Unique identifier for the backup key bag (`UUID` TLV field).
+    /// Unique identifier for the backup key bag (TLV `b"UUID"`).
     pub uuid: Vec<u8>,
-    /// Optional wrap key blob for certain classes (TLV 'WRAP').
+    /// Optional wrap key blob for certain classes (TLV `b"WRAP"`).
     pub wrap: Vec<u8>,
-    /// DPSL parameter for initial `PBKDF2` derivation (TLV 'DPSL').
+    /// DPSL parameter for initial `PBKDF2` derivation (TLV `b"DPSL"`).
     pub dpsl: Vec<u8>,
-    /// DPIC iteration count for initial `PBKDF2` derivation (TLV 'DPIC').
+    /// DPIC iteration count for initial `PBKDF2` derivation (TLV `b"DPIC"`).
     pub dpic: u32,
-    /// Salt for second `PBKDF2` derivation (TLV 'SALT').
+    /// Salt for second `PBKDF2` derivation (TLV `b"SALT"`).
     pub salt: Vec<u8>,
-    /// Iteration count for second `PBKDF2` derivation (TLV 'ITER').
+    /// Iteration count for second `PBKDF2` derivation (TLV `b"ITER"`).
     pub iter: u32,
     /// Other TLV attributes not explicitly parsed (raw tag-to-blob map).
     pub attrs: HashMap<[u8; 4], Vec<u8>>,
@@ -33,13 +33,13 @@ pub struct BackupKeyBag {
     pub class_keys: HashMap<u32, ClassKeyData>,
 }
 
-impl BackupKeyBag {
+impl KeyRing {
     /// Parse a raw backup key bag blob into a [`BackupKeyBag`], extracting TLV fields.
     ///
     /// # Arguments
     /// * `blob` - Raw TLV-encoded backup key bag bytes.
-    pub(crate) fn from_bytes(blob: &[u8]) -> Result<BackupKeyBag> {
-        let mut bag = BackupKeyBag {
+    pub(crate) fn from_bytes(blob: &[u8]) -> Result<KeyRing> {
+        let mut bag = KeyRing {
             bag_type: 0,
             uuid: Vec::new(),
             wrap: Vec::new(),
@@ -208,7 +208,7 @@ pub struct ProtectionClassKey {
 mod tests_types {
     use std::collections::HashMap;
 
-    use crate::backup::models::keyring::{BackupKeyBag, ClassKeyData};
+    use crate::backup::models::keyring::{ClassKeyData, KeyRing};
 
     #[test]
     fn test_backup_key_bag_from_bytes_basic() {
@@ -234,7 +234,7 @@ mod tests_types {
         blob.extend(b"ITER");
         blob.extend(&4u32.to_be_bytes());
         blob.extend(&3u32.to_be_bytes());
-        let bag = BackupKeyBag::from_bytes(&blob).unwrap();
+        let bag = KeyRing::from_bytes(&blob).unwrap();
 
         assert_eq!(bag.bag_type, 1);
         assert_eq!(bag.dpsl, b"aa");

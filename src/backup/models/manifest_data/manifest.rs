@@ -7,7 +7,7 @@ use plist::Value;
 use crate::{
     backup::{
         models::{
-            keyring::{BackupKeyBag, EncryptionKey, ProtectionClassKey},
+            keyring::{KeyRing, EncryptionKey, ProtectionClassKey},
             manifest_data::lockdown::ManifestLockdownInfo,
         },
         util::plist::{get_key_as_boolean, get_key_as_data},
@@ -67,7 +67,7 @@ impl ManifestData {
 #[derive(Debug, Clone)]
 pub struct Manifest {
     /// Optional key bag containing encrypted class keys.
-    pub backup_key_bag: Option<BackupKeyBag>,
+    pub backup_key_bag: Option<KeyRing>,
     /// Whether the backup is encrypted.
     pub is_encrypted: bool,
     /// Device-specific lockdown info.
@@ -108,7 +108,7 @@ impl Manifest {
         let is_encrypted = get_key_as_boolean(dict, "IsEncrypted").unwrap_or(false);
         let backup_key_bag = if is_encrypted {
             let data = get_key_as_data(dict, "BackupKeyBag")?;
-            Some(BackupKeyBag::from_bytes(&data)?)
+            Some(KeyRing::from_bytes(&data)?)
         } else {
             None
         };
