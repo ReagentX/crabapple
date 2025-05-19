@@ -23,18 +23,7 @@ impl FileKeyPair {
     /// The first 4 bytes of a key are interpreted as a little-endian
     /// `u32` protection class identifier. The remainder is treated as an AES-key-wrapped
     /// file key (`RFC 3394`).
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crabapple::backup::models::file::FileKeyPair;
-    ///
-    /// let bytes = &[1, 0, 0, 0, 0xAA, 0xBB, 0xCC];
-    /// let fk = FileKeyPair::new(bytes).unwrap();
-    ///
-    /// assert_eq!(fk.protection_class_id, 1);
-    /// ```
-    pub fn new(key: &[u8]) -> Result<Self> {
+    pub(crate) fn new(key: &[u8]) -> Result<Self> {
         let parts = key.split_at(4);
         Ok(FileKeyPair {
             protection_class_id: u32::from_le_bytes(
@@ -106,18 +95,7 @@ impl MBFile {
     ///
     /// # Errors
     /// Returns [`BackupError::MissingPlistKey`] or [`BackupError::PlistParseError`] on parse failure.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use plist::Value;
-    /// use crabapple::backup::models::file::MBFile;
-    ///
-    /// let plist: Value = /* load your plist here */ unimplemented!();
-    /// let mb = MBFile::from_plist(&plist).unwrap();
-    /// println!("Size: {} bytes", mb.size);
-    /// ```
-    pub fn from_plist(plist_data: &Value) -> Result<MBFile> {
+    pub(crate) fn from_plist(plist_data: &Value) -> Result<MBFile> {
         // parse top-level dictionary
         let dict = as_dictionary(plist_data)?;
 

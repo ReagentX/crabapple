@@ -49,8 +49,7 @@ pub(crate) fn tlv_blocks(blob: &[u8]) -> impl Iterator<Item = TLVBlock> + '_ {
             if end > self.data.len() {
                 self.pos = self.data.len();
                 return Some(Err(BackupError::InvalidTlvData(format!(
-                    "Value for tag {:?} extends beyond blob length",
-                    tag
+                    "Value for tag {tag:?} extends beyond blob length",
                 ))));
             }
 

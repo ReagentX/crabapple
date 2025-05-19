@@ -7,7 +7,7 @@ use plist::Value;
 use crate::{
     backup::{
         models::{
-            keyring::{BackupKeyBag, KeyEncryptionKey, ProtectionClassKey},
+            keyring::{BackupKeyBag, EncryptionKey, ProtectionClassKey},
             manifest_data::lockdown::ManifestLockdownInfo,
         },
         util::plist::{get_key_as_boolean, get_key_as_data},
@@ -35,7 +35,7 @@ pub struct ManifestData {
     /// Parsed `Manifest.plist` data.
     pub manifest: Manifest,
     /// Derived decryption key (`32` bytes) if encrypted.
-    pub main_decryption_key: Option<KeyEncryptionKey>,
+    pub main_decryption_key: Option<EncryptionKey>,
     /// Unwrapped per-class keys after decryption.
     pub unlocked_class_keys: Option<HashMap<u32, ProtectionClassKey>>,
 }
@@ -73,7 +73,7 @@ pub struct Manifest {
     /// Device-specific lockdown info.
     pub lockdown: ManifestLockdownInfo,
     /// Optional raw manifest key (typically 40 bytes) used for Manifest.db decryption.
-    pub manifest_key: Option<Vec<u8>>,
+    pub manifest_key: Option<EncryptionKey>,
 }
 
 impl Manifest {
@@ -114,7 +114,7 @@ impl Manifest {
         };
         let manifest_key = if is_encrypted {
             let data = get_key_as_data(dict, "ManifestKey")?;
-            Some(data.clone())
+            Some(data.clone().into())
         } else {
             None
         };

@@ -25,7 +25,7 @@ use crate::{
         models::{
             auth::Authentication,
             file::BackupFileEntry,
-            keyring::KeyEncryptionKey,
+            keyring::EncryptionKey,
             manifest_data::{
                 database::DecryptedManifestDb,
                 lockdown::ManifestLockdownInfo,
@@ -117,7 +117,7 @@ impl Backup {
                 Authentication::DerivedKey(key_hex) => hex_decode(key_hex)?,
             };
 
-            let master_key = KeyEncryptionKey::from(main_derived_key);
+            let master_key = EncryptionKey::from(main_derived_key);
 
             let unlocked_keys_map = unlock_keys_from_manifest(&master_key, &manifest)?;
             (Some(master_key), Some(unlocked_keys_map))
@@ -347,7 +347,7 @@ impl Backup {
     ///
     /// # Returns
     /// An `Option<KeyEncryptionKey>` containing the main decryption key, or `None` if not encrypted.
-    pub fn get_decryption_key(&self) -> Option<KeyEncryptionKey> {
+    pub fn get_decryption_key(&self) -> Option<EncryptionKey> {
         self.manifest_data.main_decryption_key.clone()
     }
 

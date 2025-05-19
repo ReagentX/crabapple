@@ -38,7 +38,7 @@ impl BackupKeyBag {
     ///
     /// # Arguments
     /// * `blob` - Raw TLV-encoded backup key bag bytes.
-    pub fn from_bytes(blob: &[u8]) -> Result<BackupKeyBag> {
+    pub(crate) fn from_bytes(blob: &[u8]) -> Result<BackupKeyBag> {
         let mut bag = BackupKeyBag {
             bag_type: 0,
             uuid: Vec::new(),
@@ -51,7 +51,8 @@ impl BackupKeyBag {
             class_keys: HashMap::new(),
         };
         let mut current: Option<HashMap<[u8; 4], Vec<u8>>> = None;
-        for (tag, data) in tlv_blocks(blob) {
+        for item in tlv_blocks(blob) {
+            let (tag, data) = item?;
             // if a 4‐byte value, interpret as big‐endian u32
             if data.len() == 4 {
                 let v = u32::from_be_bytes(
@@ -149,7 +150,7 @@ impl ClassKeyData {
     /// # Arguments
     /// * `map` - Tag-to-value map from TLV blocks.
     #[must_use]
-    pub fn from_map(map: &HashMap<[u8; 4], Vec<u8>>) -> ClassKeyData {
+    pub(crate) fn from_map(map: &HashMap<[u8; 4], Vec<u8>>) -> ClassKeyData {
         // Prefer WPKY, fallback to PBKY for persistent key
         let wpky = map
             .get(b"WPKY")
@@ -163,32 +164,32 @@ impl ClassKeyData {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
 /// Wrapper type for an `AES` key encryption key used in key wrapping and unwrapping.
 ///
 /// This newtype wraps a `Vec<u8>` representing a master or class key for `AES` key wrap (`RFC 3394`).
-pub struct KeyEncryptionKey(Vec<u8>);
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EncryptionKey(Vec<u8>);
 
-impl AsRef<[u8]> for KeyEncryptionKey {
+impl AsRef<[u8]> for EncryptionKey {
     fn as_ref(&self) -> &[u8] {
         &self.0
     }
 }
 
-impl From<Vec<u8>> for KeyEncryptionKey {
-    fn from(v: Vec<u8>) -> KeyEncryptionKey {
-        KeyEncryptionKey(v)
+impl From<Vec<u8>> for EncryptionKey {
+    fn from(v: Vec<u8>) -> EncryptionKey {
+        EncryptionKey(v)
     }
 }
 
-impl Deref for KeyEncryptionKey {
+impl Deref for EncryptionKey {
     type Target = Vec<u8>;
     fn deref(&self) -> &Vec<u8> {
         &self.0
     }
 }
 
-impl DerefMut for KeyEncryptionKey {
+impl DerefMut for EncryptionKey {
     fn deref_mut(&mut self) -> &mut Vec<u8> {
         &mut self.0
     }
@@ -200,7 +201,7 @@ pub struct ProtectionClassKey {
     /// Numeric class identifier
     pub class_id: u32,
     /// Raw decrypted `AES` key.
-    pub key: KeyEncryptionKey,
+    pub key: EncryptionKey,
 }
 
 #[cfg(test)]

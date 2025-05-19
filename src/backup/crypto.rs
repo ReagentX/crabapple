@@ -20,7 +20,7 @@ use sha2::Sha256;
 use crate::{
     backup::models::{
         file::WrappedKey,
-        keyring::{KeyEncryptionKey, ProtectionClassKey},
+        keyring::{EncryptionKey, ProtectionClassKey},
         manifest_data::manifest::Manifest,
     },
     error::{BackupError, Result},
@@ -90,7 +90,7 @@ pub fn derive_key_from_password(
 /// # Errors
 /// Returns `BackupError::Crypto` or `KeyUnwrapFailed` if unwrapping fails.
 pub(crate) fn unlock_keys_from_manifest(
-    master_key: &KeyEncryptionKey,
+    master_key: &EncryptionKey,
     plist_info: &Manifest,
 ) -> Result<HashMap<u32, ProtectionClassKey>> {
     if master_key.len() != 32 {
@@ -267,9 +267,9 @@ pub fn aes_encrypt_cbc_with_padding(data: &[u8], key: &[u8]) -> Result<Vec<u8>> 
 /// # Errors
 /// Returns [`BackupError::Crypto`] if the unwrapping fails or input lengths are invalid.
 pub(crate) fn aes_kw_unwrap(
-    kek_bytes: &KeyEncryptionKey,
+    kek_bytes: &EncryptionKey,
     wrapped_data: &WrappedKey,
-) -> Result<KeyEncryptionKey> {
+) -> Result<EncryptionKey> {
     if wrapped_data.len() <= 8 {
         return Err(BackupError::Crypto(format!(
             "Wrapped data is too short ({} bytes)",
@@ -487,7 +487,7 @@ mod tests {
         assert_eq!(plaintext, data);
     }
 
-    fn wrap_and_unwrap(kek_bytes: &KeyEncryptionKey, plain: &[u8]) {
+    fn wrap_and_unwrap(kek_bytes: &EncryptionKey, plain: &[u8]) {
         let mut wrapped = vec![0u8; plain.len() + 8];
         match kek_bytes.len() {
             16 => {
