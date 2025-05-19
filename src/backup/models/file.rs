@@ -8,9 +8,12 @@ use crate::{
     error::{BackupError, Result},
 };
 
+/// Pair of protection class identifier and wrapped file encryption key.
 #[derive(Debug, Clone)]
 pub struct FileKeyPair {
+    /// Numeric protection class identifier.
     pub protection_class_id: u32,
+    /// Wrapped file encryption key blob (AES key wrap RFC 3394).
     pub file_key: WrappedKey,
 }
 
@@ -73,7 +76,7 @@ pub struct MBFile {
     pub last_modified: u64,
     /// File flags as stored in the backup database.
     pub flags: u64,
-    /// Group ID (owner) of the file.
+    /// Owning group ID of the file.
     pub group_id: i64,
     /// Last status change timestamp (seconds since `UNIX` epoch).
     pub last_status_change: u64,
@@ -81,15 +84,15 @@ pub struct MBFile {
     pub birth: u64,
     /// File size in bytes.
     pub size: u64,
-    /// File mode/permission bits.
+    /// File permission and mode bits.
     pub mode: u64,
     /// Optional user ID of the file owner.
     pub user_id: Option<u64>,
-    /// Inode number recorded in backup.
+    /// Inode number recorded in the backup.
     pub inode_number: u64,
     /// Protection class identifier for the file.
     pub protection_class: u32,
-    /// Optional wrapped encryption key blob (includes class in first 4 bytes).
+    /// Optional wrapped file encryption key for this entry.
     pub encryption_key: Option<FileKeyPair>,
 }
 
@@ -170,19 +173,23 @@ impl MBFile {
 /// Entry for a single file recorded in `Manifest.db`, including its ID, path, flags, and metadata.
 #[derive(Debug, Clone)]
 pub struct BackupFileEntry {
-    /// Unique file identifier (`SHA1` of domain+path).
+    /// Unique file identifier (`SHA1` hash of domain and relative path).
     pub file_id: String,
-    /// Domain of the file (app, library, etc.).
+    /// Domain of the file (`MediaDomain`, `AppDomain`, etc.).
     pub domain: String,
-    /// Relative path inside the domain.
+    /// Relative path of the file inside its domain.
     pub relative_path: String,
     /// File flags as stored in the database.
     pub flags: u32,
-    /// Metadata and cryptographic information for the file entry.
+    /// Parsed metadata and cryptographic information for the file.
     pub metadata: MBFile,
 }
 
 impl BackupFileEntry {
+    /// Compute the filesystem path to the source file within the backup directory.
+    ///
+    /// # Returns
+    /// A `PathBuf` pointing to the file's location (using first two characters as subdirectory).
     #[must_use]
     pub fn source(&self) -> PathBuf {
         PathBuf::from(&self.file_id[0..2]).join(&self.file_id)

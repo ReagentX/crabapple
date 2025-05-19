@@ -112,11 +112,11 @@ impl BackupKeyBag {
 /// Contains wrapped key variants and metadata for a single protection class entry.
 #[derive(Debug, Clone)]
 pub struct ClassKeyData {
-    /// Alternative WPKY if provided.
+    /// Wrapped passcode-derived class key (`WPKY`) if present.
     pub wpky: Option<Vec<u8>>,
-    /// Alternative WRAP, if provided.
+    /// Wrapped backup key for non-passcode classes (`WRAP`) if present.
     pub wrap: Option<Vec<u8>>,
-    /// Alternative UUID, if provided.
+    /// Unique identifier for this class key entry (UUID), if present.
     pub uuid: Option<Vec<u8>>,
 }
 
