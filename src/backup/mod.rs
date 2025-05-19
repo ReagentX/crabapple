@@ -18,7 +18,7 @@ use rusqlite::Connection;
 use crate::{
     backup::{
         crypto::{
-            aes_decrypt_cbc_with_padding, aes_kw_unwrap_bytes, derive_key_from_password,
+            aes_decrypt_cbc_with_padding, aes_kw_unwrap, derive_key_from_password,
             unlock_keys_from_manifest,
         },
         manifest_db::ManifestDb,
@@ -53,15 +53,29 @@ pub struct Backup {
 }
 
 impl Backup {
-    /// Create a new `MobileBackup` instance, loading manifest data.
+    /// Create a new [`Backup`] instance, loading manifest data.
     ///
     /// # Arguments
     ///
     /// * `backup_path` - Filesystem path to a specific device backup folder (the UDID directory).
-    /// * `auth` - `BackupAuth` specifying password or derived key.
+    /// * `auth` -[`Authentication`] specifying password or derived key.
     ///
     /// # Errors
     /// Returns [`BackupError`] if paths are invalid, manifest loading fails, or decryption fails.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use crabapple::{Backup, Authentication};
+    ///
+    /// let backup = Backup::new(
+    ///     "/path/to/backup",
+    ///     &Authentication::Password("pass".into()),
+    /// )?;
+    ///
+    /// println!("UDID: {}", backup.udid()?);
+    /// # Ok::<(), crabapple::error::BackupError>(())
+    /// ```
     pub fn new<P: AsRef<Path>>(backup_path: P, auth: &Authentication) -> Result<Self> {
         let device_backup_path = backup_path.as_ref().to_path_buf();
         if !device_backup_path.is_dir() {
@@ -103,10 +117,10 @@ impl Backup {
                 Authentication::DerivedKey(key_hex) => hex_decode(key_hex)?,
             };
 
-            let main_key = KeyEncryptionKey::from(main_derived_key);
+            let master_key = KeyEncryptionKey::from(main_derived_key);
 
-            let unlocked_keys_map = unlock_keys_from_manifest(&main_key, &manifest)?;
-            (Some(main_key), Some(unlocked_keys_map))
+            let unlocked_keys_map = unlock_keys_from_manifest(&master_key, &manifest)?;
+            (Some(master_key), Some(unlocked_keys_map))
         } else {
             // For unencrypted backups, password/key should ideally not be provided or be empty.
             // This logic can be refined based on desired strictness.
@@ -144,15 +158,15 @@ impl Backup {
     ///
     /// ```no_run
     /// use crabapple::{Backup, Authentication};
-    /// use std::path::Path;
     ///
     /// let backup = Backup::new(
-    ///     Path::new("/path/to/backup"),
-    ///     &Authentication::Password("pass".into())
-    /// ).unwrap();
+    ///     "/path/to/backup",
+    ///     &Authentication::Password("pass".into()),
+    /// )?;
     ///
-    /// let udid = backup.udid().unwrap();
+    /// let udid = backup.udid()?;
     /// println!("UDID: {}", udid);
+    /// # Ok::<(), crabapple::error::BackupError>(())
     /// ```
     pub fn udid(&self) -> Result<&str> {
         self.backup_path
@@ -163,12 +177,32 @@ impl Backup {
 
     /// Returns device metadata from `Manifest.plist`.
     #[must_use]
+    ///
+    /// # Returns
+    /// Manifest lockdown information parsed from `Manifest.plist`.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use crabapple::{Backup, Authentication};
+    ///
+    /// let backup = Backup::new(
+    ///     "/path/to/backup",
+    ///     &Authentication::Password("pass".into()),
+    /// )?;
+    ///
+    /// let lockdown = backup.lockdown();
+    /// println!("Device name: {}", lockdown.device_name);
+    /// # Ok::<(), crabapple::error::BackupError>(())
     pub fn lockdown(&self) -> &ManifestLockdownInfo {
         &self.manifest_data.manifest.lockdown
     }
 
     /// Indicates whether the backup is encrypted.
     #[must_use]
+    ///
+    /// # Returns
+    /// `true` if the backup is encrypted, `false` otherwise.
     pub fn is_encrypted(&self) -> bool {
         self.manifest_data.manifest.is_encrypted
     }
@@ -183,16 +217,16 @@ impl Backup {
     ///
     /// ```no_run
     /// use crabapple::{Backup, Authentication};
-    /// use std::path::Path;
     ///
     /// let backup = Backup::new(
-    ///     Path::new("/path/to/backup"),
-    ///     &Authentication::Password("pass".into())
-    /// ).unwrap();
+    ///     "/path/to/backup",
+    ///     &Authentication::Password("pass".into()),
+    /// )?;
     ///
     /// if let Some(key_hex) = backup.get_decryption_key_hex() {
     ///     println!("Key: {}", key_hex);
     /// }
+    /// # Ok::<(), crabapple::error::BackupError>(())
     /// ```
     #[must_use]
     pub fn get_decryption_key_hex(&self) -> Option<String> {
@@ -215,15 +249,15 @@ impl Backup {
     ///
     /// ```no_run
     /// use crabapple::{Backup, Authentication};
-    /// use std::path::Path;
     ///
     /// let backup = Backup::new(
-    ///     Path::new("/path/to/backup"),
-    ///     &Authentication::Password("pass".into())
-    /// ).unwrap();
+    ///     "/path/to/backup",
+    ///     &Authentication::Password("pass".into()),
+    /// )?;
     ///
-    /// let domains = backup.query_all_domains().unwrap();
+    /// let domains = backup.query_all_domains()?;
     /// println!("Domains: {:?}", domains);
+    /// # Ok::<(), crabapple::error::BackupError>(())
     /// ```
     pub fn query_all_domains(&self) -> Result<HashSet<String>> {
         manifest_db::query_all_domains(&self.db)
@@ -241,15 +275,15 @@ impl Backup {
     ///
     /// ```no_run
     /// use crabapple::{Backup, Authentication};
-    /// use std::path::Path;
     ///
     /// let backup = Backup::new(
-    ///     Path::new("/path/to/backup"),
-    ///     &Authentication::Password("pass".into())
-    /// ).unwrap();
+    ///     "/path/to/backup",
+    ///     &Authentication::Password("pass".into()),
+    /// )?;
     ///
     /// let db_path = backup.get_manifest_db_path();
     /// println!("Manifest.db path: {:?}", db_path);
+    /// # Ok::<(), crabapple::error::BackupError>(())
     /// ```
     pub fn get_manifest_db_path(&self) -> &Path {
         &self.decrypted_manifest_db.db_path
@@ -264,17 +298,17 @@ impl Backup {
     ///
     /// ```no_run
     /// use crabapple::{Backup, Authentication};
-    /// use std::path::Path;
     ///
     /// let backup = Backup::new(
-    ///     Path::new("/path/to/backup"),
-    ///     &Authentication::Password("pass".into())
-    /// ).unwrap();
+    ///     "/path/to/backup",
+    ///     &Authentication::Password("pass".into()),
+    /// )?;
     ///
-    /// let files = backup.get_backup_files_list().unwrap();
+    /// let files = backup.get_backup_files_list()?;
     /// for file in files {
     ///     println!("{:?}", file);
     /// }
+    /// # Ok::<(), crabapple::error::BackupError>(())
     /// ```
     pub fn get_backup_files_list(&self) -> Result<Vec<BackupFileEntry>> {
         manifest_db::query_all_files(&self.db)
@@ -293,15 +327,15 @@ impl Backup {
     ///
     /// ```no_run
     /// use crabapple::{Backup, Authentication};
-    /// use std::path::Path;
     ///
     /// let backup = Backup::new(
-    ///     Path::new("/path/to/backup"),
-    ///     &Authentication::Password("pass".into())
-    /// ).unwrap();
+    ///     "/path/to/backup",
+    ///     &Authentication::Password("pass".into()),
+    /// )?;
     ///
-    /// let entry = backup.get_file("41ee3469300471004e6d526ebd09c051c19f8a39").unwrap();
+    /// let entry = backup.get_file("fileid")?;
     /// println!("File encryption key: {:?}", entry.metadata.encryption_key);
+    /// # Ok::<(), crabapple::error::BackupError>(())
     /// ```
     pub fn get_file(&self, file_id: &str) -> Result<BackupFileEntry> {
         manifest_db::query_file_by_id(&self.db, file_id)?
@@ -324,15 +358,15 @@ impl Backup {
     ///
     /// ```no_run
     /// use crabapple::{Backup, Authentication};
-    /// use std::path::Path;
     ///
     /// let backup = Backup::new(
-    ///     Path::new("/path/to/backup"),
-    ///     &Authentication::Password("pass".into())
-    /// ).unwrap();
+    ///     "/path/to/backup",
+    ///     &Authentication::Password("pass".into()),
+    /// )?;
     ///
-    /// let data = backup.decrypt_file_from_id("41ee3469300471004e6d526ebd09c051c19f8a39").unwrap();
+    /// let data = backup.decrypt_file_from_id("fileid")?;
     /// println!("Decrypted data length: {}", data.len());
+    /// # Ok::<(), crabapple::error::BackupError>(())
     /// ```
     // TODO: Remove this?
     pub fn decrypt_file_from_id(&self, file_id: &str) -> Result<Vec<u8>> {
@@ -342,26 +376,23 @@ impl Backup {
 
     /// Retrieve the raw 32-byte decryption key, if available.
     #[must_use]
+    ///
+    /// # Returns
+    /// An `Option<KeyEncryptionKey>` containing the main decryption key, or `None` if not encrypted.
     pub fn get_decryption_key(&self) -> Option<KeyEncryptionKey> {
         self.manifest_data.main_decryption_key.clone()
     }
 
     /// Access parsed `Manifest.plist` metadata.
     #[must_use]
+    ///
+    /// # Returns
+    /// A reference to the parsed [`Manifest`] object.
     pub fn manifest(&self) -> &Manifest {
         &self.manifest_data.manifest
     }
 
     /// Decrypt the file represented by [`BackupFileEntry`], returning plaintext bytes.
-    ///
-    // The first 4 bytes of the [`BackupFileEntry`]'s [`key`](BackupFileEntry::key) are interpreted as a little-endian
-    // `u32` protection class identifier. The remainder is treated as an AES-key-wrapped
-    // file key (RFC 3394).
-    //
-    // 1. Parse out the protection class ID.
-    // 2. Look up the corresponding unwrapped class key in `class_keys`.
-    // 3. Unwrap the file-specific AES key using AES-Key-Wrap.
-    // 4. Decrypt `ciphertext` with AES-256-CBC (zero IV), stripping PKCS#7 padding.
     ///
     /// # Arguments
     /// * `entry` - A [`BackupFileEntry`] containing metadata and encrypted file ID.
@@ -371,6 +402,22 @@ impl Backup {
     ///
     /// # Errors
     /// Returns [`BackupError::Crypto`] on decryption errors or missing keys.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use crabapple::{Backup, Authentication};
+    ///
+    /// let backup = Backup::new(
+    ///     "/path/to/backup",
+    ///     &Authentication::Password("pass".into()),
+    /// )?;
+    ///
+    /// let entry = backup.get_file("fileid")?;
+    /// let data = backup.decrypt_entry(&entry)?;
+    /// println!("Data size: {} bytes", data.len());
+    /// # Ok::<(), crabapple::error::BackupError>(())
+    /// ```
     pub fn decrypt_entry(&self, entry: &BackupFileEntry) -> Result<Vec<u8>> {
         let source = self
             .backup_path
@@ -384,7 +431,7 @@ impl Backup {
                 .manifest_data
                 .get_class_key(entry.metadata.protection_class)?;
 
-            let key = aes_kw_unwrap_bytes(&class_key_entry.key, &encryption_key.file_key)
+            let key = aes_kw_unwrap(&class_key_entry.key, &encryption_key.file_key)
                 .map_err(|_| BackupError::KeyUnwrapFailed(class_key_entry.class_id))?;
 
             aes_decrypt_cbc_with_padding(&data, &key)
@@ -404,21 +451,19 @@ impl Backup {
     /// # Examples
     ///
     /// ```no_run
-    /// use crabapple::{Backup, Authentication};
     /// use std::{fs::File, io::copy};
+    /// use crabapple::{Backup, Authentication};
     ///
-    /// # fn main() -> crabapple::error::Result<()> {
-    ///     let backup = Backup::new(
-    ///         "/path/to/backup",
-    ///         &Authentication::Password("pass".into()),
-    ///     )?;
-    ///    
-    ///     let file = backup.get_file("41ee3469300471004e6d526ebd09c051c19f8a39")?;
-    ///     let mut reader = backup.decrypt_entry_stream(&file)?;
-    ///     let mut plain = Vec::new();
-    ///     copy(&mut reader, &mut plain)?;
-    ///     Ok(())
-    /// }
+    /// let backup = Backup::new(
+    ///     "/path/to/backup",
+    ///     &Authentication::Password("pass".into()),
+    /// )?;
+    ///
+    /// let file = backup.get_file("41ee3469300471004e6d526ebd09c051c19f8a39")?;
+    /// let mut reader = backup.decrypt_entry_stream(&file)?;
+    /// let mut plain = Vec::new();
+    /// copy(&mut reader, &mut plain)?;
+    /// # Ok::<(), crabapple::error::BackupError>(())
     /// ```
     pub fn decrypt_entry_stream(
         &self,
@@ -431,7 +476,7 @@ impl Backup {
                 .manifest_data
                 .get_class_key(entry.metadata.protection_class)?;
 
-            let key = aes_kw_unwrap_bytes(&class_key_entry.key, &encryption_key.file_key)
+            let key = aes_kw_unwrap(&class_key_entry.key, &encryption_key.file_key)
                 .map_err(|_| BackupError::KeyUnwrapFailed(class_key_entry.class_id))?;
 
             return crypto::aes_decrypt_cbc_reader(ciphertext, &key);

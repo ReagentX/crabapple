@@ -26,6 +26,7 @@ Documentation is available on [docs.rs](https://docs.rs/crabapple).
 
 ```rust,no_run
 use std::{io::copy, fs::File};
+
 use crabapple::{Backup, Authentication};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -54,30 +55,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("Decrypted {} ({} bytes)", entry.relative_path, data.len());
     }
 
-    Ok(())
-}
-```
+    // Get the derived key for use elsewhere:
+    let derived_key = backup.get_decryption_key_hex();
 
-### Getting Basic Device Information
-
-You can retrieve device metadata (like device name, iOS version, and UDID) without opening the full backup database:
-
-```rust,no_run
-use std::path::Path;
-use crabapple::get_device_basic_info;
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let udid_folder = Path::new("/Users/you/Library/Application Support/MobileSync/Backup/DEVICE_UDID");
-    let info = get_device_basic_info(udid_folder)?;
-    println!("Device: {} (iOS {})", info.device_name, info.product_version);
-    println!("UDID: {}", info.unique_device_id);
     Ok(())
 }
 ```
 
 ### Using a Pre-derived Key
 
-If you have already derived the encryption key elsewhere, provide it directly:
+Pre-derived keys bypass the expensive key derivation process:
 
 ```rust,no_run
 use crabapple::{Backup, Authentication};
@@ -92,12 +79,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+### Getting Basic Device Information
+
+You can retrieve device metadata (like device name, iOS version, and UDID) without opening the full backup database:
+
+```rust,no_run
+use std::path::Path;
+
+use crabapple::backup::device::get_device_basic_info;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let udid_folder = Path::new("/Users/you/Library/Application Support/MobileSync/Backup/DEVICE_UDID");
+    let info = get_device_basic_info(udid_folder)?;
+    println!("Device: {} (iOS {})", info.device_name, info.product_version);
+    println!("UDID: {}", info.unique_device_id);
+    Ok(())
+}
+```
+
 ### Error Handling
 
 `crabapple` uses a custom `BackupError` enum for error reporting. You can match on specific cases:
 
 ```rust,no_run
-use crabapple::{Backup, Authentication, BackupError};
+use crabapple::{Backup, Authentication};
+use crabapple::error::BackupError;
 
 match Backup::new("/bad/path", &Authentication::Password("pass".into())) {
     Ok(b) => println!("Loaded backup successfully"),
