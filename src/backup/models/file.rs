@@ -30,7 +30,7 @@ impl FileKeyPair {
     /// use crabapple::backup::models::file::FileKeyPair;
     ///
     /// let bytes = &[1, 0, 0, 0, 0xAA, 0xBB, 0xCC];
-    /// let fk = FileKeyPair::new(bytes);
+    /// let fk = FileKeyPair::new(bytes).unwrap();
     ///
     /// assert_eq!(fk.protection_class_id, 1);
     /// ```
