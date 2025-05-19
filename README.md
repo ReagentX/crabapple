@@ -4,7 +4,7 @@ Crabapple is a Rust library for reading, inspecting, and extracting data from en
 
 ## ⚠️ Warning ⚠️
 
-This library is currently in an beta state and should not be used in production code.
+This library is currently in beta state and should not be used in production code.
 
 ## Features
 
