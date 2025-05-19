@@ -108,7 +108,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let auth = Authentication::DerivedKey(hex_key.to_string());
     let backup = Backup::new(udid_folder, &auth)?;
     
-    println!("Device: {} (iOS {})", backup.lockdown().device_name, backup.lockdown().product_version);
+    println!("Device: {} (iOS {})",
+        backup.lockdown().device_name,
+        backup.lockdown().product_version
+    );
     println!("UDID: {}", backup.udid()?);
     Ok(())
 }
