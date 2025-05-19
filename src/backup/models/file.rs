@@ -34,7 +34,7 @@ impl FileKeyPair {
     ///
     /// assert_eq!(fk.protection_class_id, 1);
     /// ```
-    pub fn new(key: &[u8]) -> Self {
+    #[must_use] pub fn new(key: &[u8]) -> Self {
         let parts = key.split_at(4);
         FileKeyPair {
             protection_class_id: u32::from_le_bytes(parts.0.try_into().unwrap()),
