@@ -22,8 +22,9 @@ use crate::{
 /// # Examples
 ///
 /// ```no_run
-/// use crabapple::backup::device::get_device_basic_info;
 /// use std::path::Path;
+///
+/// use crabapple::backup::device::get_device_basic_info;
 ///
 /// let path = Path::new("/path/to/backup");
 /// let info = get_device_basic_info(path).unwrap();

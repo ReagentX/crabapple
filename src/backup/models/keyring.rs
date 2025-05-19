@@ -5,7 +5,10 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-use crate::backup::util::tlv::tlv_blocks;
+use crate::{
+    backup::util::tlv::tlv_blocks,
+    error::{BackupError, Result},
+};
 
 /// Represents the key bag from `Manifest.plist` containing encryption parameters and wrapped class keys.
 #[derive(Debug, Clone)]
@@ -35,8 +38,7 @@ impl BackupKeyBag {
     ///
     /// # Arguments
     /// * `blob` - Raw TLV-encoded backup key bag bytes.
-    #[must_use]
-    pub fn from_bytes(blob: &[u8]) -> BackupKeyBag {
+    pub fn from_bytes(blob: &[u8]) -> Result<BackupKeyBag> {
         let mut bag = BackupKeyBag {
             bag_type: 0,
             uuid: Vec::new(),
@@ -51,9 +53,12 @@ impl BackupKeyBag {
         let mut current: Option<HashMap<[u8; 4], Vec<u8>>> = None;
         for (tag, data) in tlv_blocks(blob) {
             // if a 4‐byte value, interpret as big‐endian u32
-            // TODO: add some `TryFromSliceError` and return a `Result` from this function
             if data.len() == 4 {
-                let v = u32::from_be_bytes(data.as_slice().try_into().unwrap());
+                let v = u32::from_be_bytes(
+                    data.as_slice()
+                        .try_into()
+                        .map_err(BackupError::ConversionFailed)?,
+                );
                 if &tag == b"TYPE" {
                     bag.bag_type = v;
                     continue;
@@ -66,15 +71,27 @@ impl BackupKeyBag {
                 b"DPSL" if bag.dpsl.is_empty() => bag.dpsl = data,
                 b"SALT" if bag.salt.is_empty() => bag.salt = data,
                 b"DPIC" if bag.dpic == 0 => {
-                    bag.dpic = u32::from_be_bytes(data.as_slice().try_into().unwrap());
+                    bag.dpic = u32::from_be_bytes(
+                        data.as_slice()
+                            .try_into()
+                            .map_err(BackupError::ConversionFailed)?,
+                    );
                 }
                 b"ITER" if bag.iter == 0 => {
-                    bag.iter = u32::from_be_bytes(data.as_slice().try_into().unwrap());
+                    bag.iter = u32::from_be_bytes(
+                        data.as_slice()
+                            .try_into()
+                            .map_err(BackupError::ConversionFailed)?,
+                    );
                 }
                 b"UUID" => {
                     // starting a new class‐key record
                     if let Some(cur) = current.take() {
-                        let class_id = u32::from_be_bytes(cur[b"CLAS"][..].try_into().unwrap());
+                        let class_id = u32::from_be_bytes(
+                            cur[b"CLAS"][..]
+                                .try_into()
+                                .map_err(BackupError::ConversionFailed)?,
+                        );
                         bag.class_keys
                             .insert(class_id, ClassKeyData::from_map(&cur));
                     }
@@ -91,7 +108,9 @@ impl BackupKeyBag {
                 {
                     // This unwrap is safe because we just checked that current is Some
                     // Eventually `if let` guards should be used, but they are not stable yet
-                    current.as_mut().unwrap().insert(tag, data);
+                    if let Some(curr) = &mut current {
+                        curr.insert(tag, data);
+                    }
                 }
                 // For any other tags, add them to the attrs map
                 _ => {
@@ -101,11 +120,15 @@ impl BackupKeyBag {
         }
         // don't forget the last one
         if let Some(cur) = current {
-            let class_id = u32::from_be_bytes(cur[b"CLAS"][..].try_into().unwrap());
+            let class_id = u32::from_be_bytes(
+                cur[b"CLAS"][..]
+                    .try_into()
+                    .map_err(BackupError::ConversionFailed)?,
+            );
             bag.class_keys
                 .insert(class_id, ClassKeyData::from_map(&cur));
         }
-        bag
+        Ok(bag)
     }
 }
 
@@ -210,7 +233,7 @@ mod tests_types {
         blob.extend(b"ITER");
         blob.extend(&4u32.to_be_bytes());
         blob.extend(&3u32.to_be_bytes());
-        let bag = BackupKeyBag::from_bytes(&blob);
+        let bag = BackupKeyBag::from_bytes(&blob).unwrap();
 
         assert_eq!(bag.bag_type, 1);
         assert_eq!(bag.dpsl, b"aa");

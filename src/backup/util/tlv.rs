@@ -20,15 +20,18 @@ pub(crate) fn tlv_blocks(blob: &[u8]) -> impl Iterator<Item = ([u8; 4], Vec<u8>)
             if self.pos + 8 > self.data.len() {
                 return None;
             }
+
             // TODO: add some `TryFromSliceError` and return a `Result` from this function
             let tag = self.data[self.pos..self.pos + 4].try_into().unwrap();
             let len = u32::from_be_bytes(self.data[self.pos + 4..self.pos + 8].try_into().unwrap())
                 as usize;
             let start = self.pos + 8;
             let end = start + len;
+
             if end > self.data.len() {
                 return None;
             }
+
             let value = self.data[start..end].to_vec();
             self.pos = end;
             Some((tag, value))

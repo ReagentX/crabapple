@@ -1,6 +1,6 @@
 //! Custom error type for all iOS backup operations
 
-use std::fmt;
+use std::{array::TryFromSliceError, fmt};
 
 /// Custom error type for all iOS backup operations in this library.
 ///
@@ -19,6 +19,9 @@ pub enum BackupError {
 
     /// Cryptographic operation failed, with a descriptive message.
     Crypto(String),
+
+    /// Conversion from slice to integer failed.
+    ConversionFailed(TryFromSliceError),
 
     /// Attempted to use encryption features on an unencrypted backup.
     NotEncrypted,
@@ -76,6 +79,9 @@ impl fmt::Display for BackupError {
             BackupError::Plist(err) => write!(f, "Plist parsing error: {err}"),
             BackupError::Database(err) => write!(f, "SQLite database error: {err}"),
             BackupError::Crypto(msg) => write!(f, "Cryptography error: {msg}"),
+            BackupError::ConversionFailed(why) => {
+                write!(f, "Conversion failed: {why}")
+            }
             BackupError::NotEncrypted => write!(f, "Backup is not encrypted"),
             BackupError::PasswordOrKeyRequired => write!(
                 f,

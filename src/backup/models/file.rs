@@ -34,12 +34,14 @@ impl FileKeyPair {
     ///
     /// assert_eq!(fk.protection_class_id, 1);
     /// ```
-    #[must_use] pub fn new(key: &[u8]) -> Self {
+    pub fn new(key: &[u8]) -> Result<Self> {
         let parts = key.split_at(4);
-        FileKeyPair {
-            protection_class_id: u32::from_le_bytes(parts.0.try_into().unwrap()),
+        Ok(FileKeyPair {
+            protection_class_id: u32::from_le_bytes(
+                parts.0.try_into().map_err(BackupError::ConversionFailed)?,
+            ),
             file_key: WrappedKey(parts.1.to_vec()),
-        }
+        })
     }
 }
 
@@ -149,7 +151,7 @@ impl MBFile {
                 })?;
 
             let data = get_key_as_data(data_dict, "NS.data")?;
-            Some(FileKeyPair::new(&data))
+            Some(FileKeyPair::new(&data)?)
         } else {
             None
         };

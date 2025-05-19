@@ -108,7 +108,7 @@ impl Manifest {
         let is_encrypted = get_key_as_boolean(dict, "IsEncrypted").unwrap_or(false);
         let backup_key_bag = if is_encrypted {
             let data = get_key_as_data(dict, "BackupKeyBag")?;
-            Some(BackupKeyBag::from_bytes(&data))
+            Some(BackupKeyBag::from_bytes(&data)?)
         } else {
             None
         };

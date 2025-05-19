@@ -75,7 +75,7 @@ impl ManifestDb {
             // 3. Unwrap the file-specific AES key using AES-Key-Wrap.
             // 4. Decrypt `ciphertext` with AES-256-CBC (zero IV), stripping PKCS#7 padding.
             // TODO: this is repeated in `Backup::get_file_decrypted_copy`, clean it up
-            let manifest_file_key = FileKeyPair::new(manifest_key_bytes);
+            let manifest_file_key = FileKeyPair::new(manifest_key_bytes)?;
 
             let class_key_entry =
                 manifest_data.get_class_key(manifest_file_key.protection_class_id)?;

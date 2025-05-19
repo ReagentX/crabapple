@@ -342,38 +342,6 @@ impl Backup {
             .ok_or_else(|| BackupError::FileNotFoundInBackup(file_id.to_string()))
     }
 
-    /// Decrypt and return the contents of a file in the backup.
-    ///
-    /// # Arguments
-    /// * `file_id` - The unique identifier of the file to decrypt (`SHA1` hash).
-    ///
-    /// # Returns
-    /// Plaintext data as a byte vector, decrypted if encrypted.
-    ///
-    /// # Errors
-    /// Returns [`BackupError::FileNotFoundInBackup`] if the file ID is not found,
-    /// or [`BackupError::Io`] for I/O or decryption failures.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use crabapple::{Backup, Authentication};
-    ///
-    /// let backup = Backup::new(
-    ///     "/path/to/backup",
-    ///     &Authentication::Password("pass".into()),
-    /// )?;
-    ///
-    /// let data = backup.decrypt_file_from_id("fileid")?;
-    /// println!("Decrypted data length: {}", data.len());
-    /// # Ok::<(), crabapple::error::BackupError>(())
-    /// ```
-    // TODO: Remove this?
-    pub fn decrypt_file_from_id(&self, file_id: &str) -> Result<Vec<u8>> {
-        let file_entry = self.get_file(file_id)?;
-        self.decrypt_entry(&file_entry)
-    }
-
     /// Retrieve the raw 32-byte decryption key, if available.
     #[must_use]
     ///
