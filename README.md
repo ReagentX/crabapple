@@ -1,6 +1,8 @@
 # crabapple
 
-Crabapple is a Rust library for reading, inspecting, and extracting data from encrypted iOS backups created by Finder, Apple Devices, or iTunes.
+`crabapple` is a Rust library for reading, inspecting, and extracting data from encrypted iOS backups created by Finder, Apple Devices, or iTunes.
+
+Inspired by [`imessage-exporter`](https://github.com/ReagentX/imessage-exporter), `crabapple` provides a flexible foundation for any project that needs to access iOS backup data.
 
 ## ⚠️ Warning ⚠️
 

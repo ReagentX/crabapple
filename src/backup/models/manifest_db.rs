@@ -2,7 +2,7 @@
 
 use std::{
     collections::HashSet,
-    fs::File,
+    fs::{File, remove_file},
     io::copy,
     path::{Path, PathBuf},
 };
@@ -58,13 +58,13 @@ impl ManifestDb {
     /// let db_path = backup.get_manifest_db_path();
     /// # Ok::<(), crabapple::error::BackupError>(())
     /// ```
-    pub fn new(db_path: &Path, manifest_data: &Manifest) -> Result<Self> {
+    pub fn new(db_path: &Path, manifest: &Manifest) -> Result<Self> {
         if !db_path.exists() {
             return Err(BackupError::ManifestDbNotFound);
         }
 
-        let decrypted_db_info = if manifest_data.manifest_data.is_encrypted {
-            let manifest_key_bytes = manifest_data
+        let decrypted_db_info = if manifest.manifest_data.is_encrypted {
+            let manifest_key_bytes = manifest
                 .manifest_data
                 .manifest_key
                 .as_ref()
@@ -83,11 +83,11 @@ impl ManifestDb {
             // 2. Look up the corresponding unwrapped class key in `class_keys`.
             // 3. Unwrap the file-specific AES key using AES-Key-Wrap.
             // 4. Decrypt `ciphertext` with AES-256-CBC (zero IV), stripping PKCS#7 padding.
-            // TODO: this is repeated in `Backup::get_file_decrypted_copy`, clean it up
+            // TODO: this is repeated in `Backup::decrypt_entry`, clean it up
             let manifest_file_key = FileKeyPair::new(manifest_key_bytes)?;
 
             let class_key_entry =
-                manifest_data.get_class_key(manifest_file_key.protection_class_id)?;
+                manifest.get_class_key(manifest_file_key.protection_class_id)?;
 
             let key = aes_kw_unwrap(&class_key_entry.key, &manifest_file_key.file_key)
                 .map_err(|_| BackupError::KeyUnwrapFailed(manifest_file_key.protection_class_id))?;
@@ -132,6 +132,21 @@ impl ManifestDb {
     /// Returns [`BackupError::Database`] if opening the connection fails.
     pub fn try_get_connection(&self) -> Result<rusqlite::Connection> {
         rusqlite::Connection::open(&self.db_path).map_err(BackupError::Database)
+    }
+}
+
+impl Drop for ManifestDb {
+    fn drop(&mut self) {
+        if self.is_temporary {
+            // Remove the file, ignoring errors if any
+            if let Err(e) = remove_file(&self.db_path) {
+                eprintln!(
+                    "warning: failed to remove temporary `Manifest.db` file at {}: {}",
+                    self.db_path.display(),
+                    e
+                );
+            }
+        }
     }
 }
 

@@ -1,10 +1,10 @@
-//! Device metadata from the backup's `Manifest.plist`
+//! Device metadata from the backup's `Manifest.plist`.
 
 use plist::Value;
 
 use crate::{
-    backup::util::plist::get_key_as_string,
-    error::{BackupError, Result},
+    backup::util::plist::{as_dictionary, get_key_as_string},
+    error::Result,
 };
 
 /// Device metadata from the backup's `Manifest.plist`.
@@ -32,9 +32,7 @@ impl ManifestLockdownInfo {
     /// # Errors
     /// Returns [`BackupError::PlistParseError`] if the structure is invalid.
     pub(crate) fn from_plist(plist_data: &Value) -> Result<ManifestLockdownInfo> {
-        let dict = plist_data.as_dictionary().ok_or_else(|| {
-            BackupError::PlistParseError("ManifestLockdownInfo plist is not a dictionary".into())
-        })?;
+        let dict = as_dictionary(plist_data)?;
 
         Ok(ManifestLockdownInfo {
             build_version: get_key_as_string(dict, "BuildVersion")?,

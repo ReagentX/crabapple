@@ -14,7 +14,7 @@ use crate::{
 pub struct FileKeyPair {
     /// Numeric protection class identifier.
     pub protection_class_id: u32,
-    /// Wrapped file encryption key blob (AES key wrap RFC 3394).
+    /// Wrapped file encryption key blob (`AES` key wrap `RFC 3394`).
     pub file_key: WrappedKey,
 }
 
@@ -22,7 +22,7 @@ impl FileKeyPair {
     /// Deserialize the protection class identifier and the key blob for a file.
     ///
     /// The first 4 bytes of a key are interpreted as a little-endian
-    /// `u32` protection class identifier. The remainder is treated as an AES-key-wrapped
+    /// `u32` protection class identifier. The remainder is treated as an `AES`-key-wrapped
     /// file key (`RFC 3394`).
     pub(crate) fn new(key: &[u8]) -> Result<Self> {
         let parts = key.split_at(4);

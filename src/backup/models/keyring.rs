@@ -12,7 +12,7 @@ use crate::{
 
 /// Represents the key bag from `Manifest.plist` containing encryption parameters and wrapped class keys.
 #[derive(Debug, Clone)]
-pub struct KeyRing {
+pub(crate) struct KeyRing {
     /// Bag type identifier (backup key bag version).
     pub bag_type: u32,
     /// Unique identifier for the backup key bag (TLV `b"UUID"`).
@@ -28,9 +28,9 @@ pub struct KeyRing {
     /// Iteration count for second `PBKDF2` derivation (TLV `b"ITER"`).
     pub iter: u32,
     /// Other TLV attributes not explicitly parsed (raw tag-to-blob map).
-    pub attrs: HashMap<[u8; 4], Vec<u8>>,
+    pub(crate) attrs: HashMap<[u8; 4], Vec<u8>>,
     /// Map of protection class IDs to their wrapped key data.
-    pub class_keys: HashMap<u32, ClassKeyData>,
+    pub(crate) class_keys: HashMap<u32, ClassKeyData>,
 }
 
 impl KeyRing {
@@ -135,13 +135,13 @@ impl KeyRing {
 
 /// Contains wrapped key variants and metadata for a single protection class entry.
 #[derive(Debug, Clone)]
-pub struct ClassKeyData {
+pub(crate) struct ClassKeyData {
     /// Wrapped passcode-derived class key (`WPKY`) if present.
     pub wpky: Option<Vec<u8>>,
     /// Wrapped backup key for non-passcode classes (`WRAP`) if present.
     pub wrap: Option<Vec<u8>>,
     /// Unique identifier for this class key entry (UUID), if present.
-    pub uuid: Option<Vec<u8>>,
+    pub _uuid: Option<Vec<u8>>,
 }
 
 impl ClassKeyData {
@@ -159,7 +159,7 @@ impl ClassKeyData {
         ClassKeyData {
             wpky,
             wrap: map.get(b"WRAP").cloned(),
-            uuid: map.get(b"UUID").cloned(),
+            _uuid: map.get(b"UUID").cloned(),
         }
     }
 }
@@ -255,6 +255,6 @@ mod tests_types {
         let ck = ClassKeyData::from_map(&map);
         assert_eq!(ck.wpky.unwrap(), b"wp".to_vec());
         assert_eq!(ck.wrap.unwrap(), b"wr".to_vec());
-        assert_eq!(ck.uuid.unwrap(), b"id".to_vec());
+        assert_eq!(ck._uuid.unwrap(), b"id".to_vec());
     }
 }

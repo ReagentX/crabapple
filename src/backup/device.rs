@@ -37,6 +37,6 @@ pub fn get_device_basic_info(device_backup_path: &Path) -> Result<ManifestLockdo
             plist_path.display().to_string(),
         ));
     }
-    let info = ManifestData::load(&plist_path)?;
+    let info = ManifestData::from_plist(&plist_path)?;
     Ok(info.lockdown)
 }

@@ -102,7 +102,7 @@ mod tests {
             .unwrap_err();
         match err {
             BackupError::InvalidTlvData(_) => {}
-            _ => panic!("Expected InvalidTlvData error, got {:?}", err),
+            _ => panic!("Expected InvalidTlvData error, got {err:?}"),
         }
         assert!(iter.next().is_none());
     }
