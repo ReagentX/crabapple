@@ -97,6 +97,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+This information is also present on a decrypted `Backup` instance:
+
+```rust,no_run
+use crabapple::{Backup, Authentication};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let udid_folder = "/path/to/backup";
+    let hex_key = "abcdef0123456789...";
+    let auth = Authentication::DerivedKey(hex_key.to_string());
+    let backup = Backup::new(udid_folder, &auth)?;
+    
+    println!("Device: {} (iOS {})", backup.lockdown().device_name, backup.lockdown().product_version);
+    println!("UDID: {}", backup.udid()?);
+    Ok(())
+}
+```
+
 ### Error Handling
 
 `crabapple` uses a custom `BackupError` enum for error reporting. You can match on specific cases:
