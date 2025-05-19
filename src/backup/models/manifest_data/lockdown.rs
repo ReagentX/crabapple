@@ -1,4 +1,5 @@
-//! Device metadata from the backup's `Manifest.plist`.
+//! Device metadata from the backup's `Manifest.plist`
+
 use plist::Value;
 
 use crate::{

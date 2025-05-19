@@ -1,4 +1,5 @@
 //! Module for loading, decrypting, and querying the `Manifest.db` of an iOS backup.
+
 use std::{collections::HashSet, fs::File, io::copy, path::Path};
 
 use plist::Value;

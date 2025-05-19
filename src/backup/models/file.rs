@@ -1,4 +1,5 @@
 //! File metadata and cryptographic information for backup entries.
+
 use std::{ops::Deref, path::PathBuf};
 
 use plist::Value;
