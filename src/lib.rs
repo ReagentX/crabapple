@@ -1,7 +1,6 @@
 #![forbid(unsafe_code)]
 #![doc = include_str!("../README.md")]
 
-/// Main library for interacting with iOS backups, providing types and methods for decryption and metadata access.
 pub mod backup;
 pub mod error;
 
