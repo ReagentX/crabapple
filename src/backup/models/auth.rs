@@ -2,15 +2,24 @@
 
 /// Authentication method for encrypted backups.
 ///
-/// Use a plaintext password or provide a pre-derived encryption key (hex-encoded).
+/// Use this to supply either:
+/// - a user password (to be `PBKDF2`-derived),  
+/// - a pre-derived key (hex-encoded), or  
+/// - no authentication for unencrypted backups.
 ///
 /// # Examples
 ///
 /// ```no_run
-/// use crabapple::Authentication;
+/// use crabapple::backup::models::auth::Authentication;
 ///
-/// let auth1 = Authentication::Password("password123".to_string());
-/// let auth2 = Authentication::DerivedKey("abcdef012345...".to_string());
+/// // Password-based
+/// let auth1 = Authentication::Password("my_password".to_string());
+///
+/// // Pre-derived key (hex)
+/// let auth2 = Authentication::DerivedKey("abcdef0123456789...".to_string());
+///
+/// // No auth (unencrypted backup)
+/// let auth_none = Authentication::None;
 /// ```
 #[derive(Debug, Clone)]
 pub enum Authentication {
@@ -18,4 +27,6 @@ pub enum Authentication {
     Password(String),
     /// Pre-derived key (hex-encoded) to decrypt backup.
     DerivedKey(String),
+    /// No authentication (for unencrypted backups).
+    None,
 }
