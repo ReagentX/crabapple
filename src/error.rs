@@ -1,4 +1,4 @@
-//! Custom error type for all iOS backup operations
+//! Custom error type for all iOS backup operations.
 
 use std::{array::TryFromSliceError, fmt};
 
@@ -10,9 +10,6 @@ use std::{array::TryFromSliceError, fmt};
 pub enum BackupError {
     /// An underlying I/O error occurred.
     Io(std::io::Error),
-
-    /// Failed to parse a property list (plist).
-    Plist(plist::Error),
 
     /// `SQLite` database error (e.g., opening or querying Manifest.db).
     Database(rusqlite::Error),
@@ -68,7 +65,7 @@ pub enum BackupError {
     /// Invalid TLV data encountered.
     InvalidTlvData(String),
 
-    /// Failed to parse `MBFile` `NSKeyedArchiver` plist.
+    /// Failed to parse data from a `plist`.
     PlistParseError(String),
 }
 
@@ -79,7 +76,6 @@ impl fmt::Display for BackupError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             BackupError::Io(err) => write!(f, "IO error: {err}"),
-            BackupError::Plist(err) => write!(f, "Plist parsing error: {err}"),
             BackupError::Database(err) => write!(f, "SQLite database error: {err}"),
             BackupError::Crypto(msg) => write!(f, "Cryptography error: {msg}"),
             BackupError::ConversionFailed(why) => {
@@ -118,7 +114,7 @@ impl fmt::Display for BackupError {
                 "Invalid data length for cryptographic operation: expected {expected}, got {actual}"
             ),
             BackupError::InvalidTlvData(msg) => write!(f, "Invalid TLV data: {msg}"),
-            BackupError::PlistParseError(msg) => write!(f, "MBFile plist parse error: {msg}"),
+            BackupError::PlistParseError(msg) => write!(f, "Plist parse error: {msg}"),
         }
     }
 }
@@ -127,7 +123,6 @@ impl std::error::Error for BackupError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             BackupError::Io(err) => Some(err),
-            BackupError::Plist(err) => Some(err),
             BackupError::Database(err) => Some(err),
             BackupError::Utf8(err) => Some(err),
             _ => None,
@@ -139,12 +134,6 @@ impl std::error::Error for BackupError {
 impl From<std::io::Error> for BackupError {
     fn from(err: std::io::Error) -> Self {
         BackupError::Io(err)
-    }
-}
-
-impl From<plist::Error> for BackupError {
-    fn from(err: plist::Error) -> Self {
-        BackupError::Plist(err)
     }
 }
 
