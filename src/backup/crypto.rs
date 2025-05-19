@@ -71,10 +71,13 @@ pub fn derive_key_from_password(
 ) -> Result<EncryptionKey> {
     let mut derived_pw = vec![0u8; 32]; // iOS backup key is 32 bytes (AES-256)
     let mut key = vec![0u8; 32]; // iOS backup key is 32 bytes (AES-256)
-    eprintln!("Deriving key from password...");
-    // TODO: Use a faster lib here
+
+    // First PBKDF2 pass with SHA256
     pbkdf2_hmac::<Sha256>(password, dpsl, dpic, &mut derived_pw);
+
+    // Second PBKDF2 pass with SHA1
     pbkdf2_hmac::<Sha1>(&derived_pw, salt, iter, &mut key);
+
     Ok(key.into())
 }
 
@@ -160,14 +163,14 @@ pub(crate) fn unlock_keys_from_manifest(
 /// ```no_run
 /// use crabapple::backup::crypto::{aes_encrypt_cbc_with_padding, aes_decrypt_cbc_with_padding};
 ///
-/// let key = vec![0u8; 32];
+/// let key = vec![0u8; 32].into();
 /// let data = b"hello world";
 /// let ciphertext = aes_encrypt_cbc_with_padding(data, &key).unwrap();
 /// let plaintext = aes_decrypt_cbc_with_padding(&ciphertext, &key).unwrap();
 ///
 /// assert_eq!(plaintext, data);
 /// ```
-pub fn aes_decrypt_cbc_with_padding(data: &[u8], key: &[u8]) -> Result<Vec<u8>> {
+pub fn aes_decrypt_cbc_with_padding(data: &[u8], key: &EncryptionKey) -> Result<Vec<u8>> {
     if key.len() != 32 {
         // Assuming AES-256 for this function
         return Err(BackupError::InvalidCryptoDataLength {
@@ -222,14 +225,14 @@ pub fn aes_decrypt_cbc_with_padding(data: &[u8], key: &[u8]) -> Result<Vec<u8>> 
 /// ```no_run
 /// use crabapple::backup::crypto::{aes_encrypt_cbc_with_padding, aes_decrypt_cbc_with_padding};
 ///
-/// let key = vec![0u8; 32];
+/// let key = vec![0u8; 32].into();
 /// let data = b"hello world";
 /// let ct = aes_encrypt_cbc_with_padding(data, &key).unwrap();
 /// let pt = aes_decrypt_cbc_with_padding(&ct, &key).unwrap();
 ///
 /// assert_eq!(pt, data);
 /// ```
-pub fn aes_encrypt_cbc_with_padding(data: &[u8], key: &[u8]) -> Result<Vec<u8>> {
+pub fn aes_encrypt_cbc_with_padding(data: &[u8], key: &EncryptionKey) -> Result<Vec<u8>> {
     if key.len() != 32 {
         // Assuming AES-256 for this function
         return Err(BackupError::InvalidCryptoDataLength {
@@ -478,7 +481,7 @@ mod tests {
 
     #[test]
     fn test_aes_cbc_roundtrip() {
-        let key = vec![0x42; 32];
+        let key = vec![0x42; 32].into();
         let data = b"The quick brown fox jumps over the lazy dog";
         let ciphertext = aes_encrypt_cbc_with_padding(data, &key).unwrap();
         assert_ne!(ciphertext, data);
@@ -552,7 +555,7 @@ mod tests {
     fn test_aes_encrypt_invalid_key_length() {
         let data = b"hello";
         // key too short
-        let short_key = vec![0u8; 16];
+        let short_key = vec![0u8; 16].into();
         let err = aes_encrypt_cbc_with_padding(data, &short_key).unwrap_err();
         match err {
             BackupError::InvalidCryptoDataLength {
@@ -562,7 +565,7 @@ mod tests {
             _ => panic!("Expected InvalidCryptoDataLength for short key"),
         }
         // key too long
-        let long_key = vec![0u8; 64];
+        let long_key = vec![0u8; 64].into();
         let err2 = aes_encrypt_cbc_with_padding(data, &long_key).unwrap_err();
         match err2 {
             BackupError::InvalidCryptoDataLength {
@@ -576,7 +579,7 @@ mod tests {
     #[test]
     fn test_aes_decrypt_invalid_key_length() {
         let cipher = vec![0u8; 16];
-        let short_key = vec![0u8; 24];
+        let short_key = vec![0u8; 24].into();
         let err = aes_decrypt_cbc_with_padding(&cipher, &short_key).unwrap_err();
         match err {
             BackupError::InvalidCryptoDataLength { actual, expected } => {
@@ -604,7 +607,7 @@ mod tests {
     #[test]
     fn test_aes_encrypt_decrypt_empty_data() {
         // AES-256 key of zeros
-        let key = vec![0u8; 32];
+        let key = vec![0u8; 32].into();
         // Encrypt empty plaintext
         let ciphertext = aes_encrypt_cbc_with_padding(&[], &key).unwrap();
         // Even empty plaintext should produce one full block of padding
@@ -617,7 +620,7 @@ mod tests {
     #[test]
     fn test_aes_decrypt_trims_non_multiple_of_block_size() {
         // Prepare a valid ciphertext for "hello"
-        let key = vec![0u8; 32];
+        let key = vec![0u8; 32].into();
         let original = b"hello";
         let mut ciphertext = aes_encrypt_cbc_with_padding(original, &key).unwrap();
         // Append extra bytes that should be ignored
