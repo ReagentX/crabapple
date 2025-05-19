@@ -1,5 +1,7 @@
 //! Hexadecimal encoding and decoding functions.
 
+use std::fmt::Write;
+
 use crate::error::{BackupError, Result};
 
 /// Decode a hexadecimal string into a byte vector.
@@ -34,7 +36,12 @@ pub(crate) fn hex_decode(hex_string: &str) -> Result<Vec<u8>> {
 /// A [`String`] of hex digits (two chars per input byte).
 #[must_use]
 pub(crate) fn hex_encode(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
+    bytes
+        .iter()
+        .fold(String::with_capacity(bytes.len() * 2), |mut s, &b| {
+            write!(&mut s, "{:02x}", b).unwrap();
+            s
+        })
 }
 
 #[cfg(test)]
