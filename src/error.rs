@@ -29,6 +29,9 @@ pub enum BackupError {
     /// A password or derived key was required but not provided.
     PasswordOrKeyRequired,
 
+    /// The password or derived key was incorrect.
+    PasswordOrKeyIncorrect,
+
     /// `Manifest.plist` file was not found at the expected path.
     ManifestPlistNotFound(String),
 
@@ -87,6 +90,9 @@ impl fmt::Display for BackupError {
                 f,
                 "Password or derived key is required for encrypted backups"
             ),
+            BackupError::PasswordOrKeyIncorrect => {
+                write!(f, "Password or derived key is incorrect")
+            }
             BackupError::ManifestPlistNotFound(path) => {
                 write!(f, "Manifest.plist not found at {path}")
             }

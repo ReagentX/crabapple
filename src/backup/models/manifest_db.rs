@@ -1,16 +1,20 @@
 //! Module for loading, decrypting, and querying the `Manifest.db` of an iOS backup.
 
-use std::{collections::HashSet, fs::File, io::copy, path::Path};
+use std::{
+    collections::HashSet,
+    fs::File,
+    io::copy,
+    path::{Path, PathBuf},
+};
 
 use plist::Value;
 use rusqlite::Connection;
 
 use crate::{
     backup::{
-        crypto::{aes_decrypt_cbc_reader, aes_kw_unwrap},
+        crypto::{AesCbcDecryptReader, aes_kw_unwrap},
         models::{
             file::{BackupFileEntry, FileKeyPair, MBFile},
-            manifest_data::database::DecryptedManifestDb,
             manifest_data::manifest::ManifestData,
         },
         util::hex::hex_encode,
@@ -20,7 +24,14 @@ use crate::{
 
 /// Represents the backup's `Manifest.db`, decrypted if necessary, and holds decryption info.
 pub struct ManifestDb {
-    decrypted_db_info: DecryptedManifestDb,
+    /// Path to the `SQLite` database file.
+    pub db_path: PathBuf,
+    /// Whether `db_path` points to a temporary decrypted file.
+    pub is_temporary: bool,
+    /// Connection string (usually the file path).
+    pub connection_string: String,
+    /// Optional hex-encoded decryption key used to decrypt the database.
+    pub decryption_key: Option<String>,
 }
 
 impl ManifestDb {
@@ -28,9 +39,7 @@ impl ManifestDb {
     ///
     /// # Arguments
     /// * `db_path` - Filesystem path to the `Manifest.db` file.
-    /// * `is_encrypted` - Indicates if the backup is encrypted.
-    /// * `manifest_key_data` - Optional raw key blob for `Manifest.db` decryption.
-    /// * `class_keys` - Unwrapped class keys for key bag decryption.
+    /// * `manifest_data` - Data derived from the backup's `Manifest.plist`.
     ///
     /// # Errors
     /// Returns [`BackupError::ManifestDbNotFound`] if the DB file is missing, or [`BackupError::Crypto`] on decryption errors.
@@ -39,7 +48,7 @@ impl ManifestDb {
     ///
     /// ```no_run
     /// use crabapple::{Backup, Authentication};
-    /// use crabapple::backup::manifest_db;
+    /// use crabapple::backup::models::manifest_db;
     ///
     /// let backup = Backup::new(
     ///     "/path/to/backup",
@@ -86,7 +95,7 @@ impl ManifestDb {
 
             // Decrypt the Manifest.db using the unwrapped key
             let db_bytes = File::open(db_path)?;
-            let mut decrypted_manifest_db_stream = aes_decrypt_cbc_reader(&db_bytes, &key)?;
+            let mut decrypted_manifest_db_stream = AesCbcDecryptReader::from(&db_bytes, &key)?;
 
             // Write decrypted Manifest.db into the platform-specific temporary directory
             let tmp_path = std::env::temp_dir().join("crabapple-Manifest.db");
@@ -97,27 +106,33 @@ impl ManifestDb {
                 BackupError::Crypto(format!("Failed writing decrypted Manifest.db: {e}"))
             })?;
 
-            DecryptedManifestDb {
+            Self {
                 db_path: tmp_path,
                 is_temporary: true,
                 connection_string: db_path.to_string_lossy().into_owned(), // Path for direct open
                 decryption_key: Some(hex_encode(&key)),
             }
         } else {
-            DecryptedManifestDb {
+            Self {
                 db_path: db_path.to_path_buf(),
                 is_temporary: false,
                 connection_string: db_path.to_string_lossy().into_owned(),
                 decryption_key: None,
             }
         };
-        Ok(Self { decrypted_db_info })
+
+        Ok(decrypted_db_info)
     }
 
-    /// Consume this [`ManifestDb` ]and return the underlying [`DecryptedManifestDb`] information.
-    #[must_use]
-    pub(crate) fn into_decrypted_db_info(self) -> DecryptedManifestDb {
-        self.decrypted_db_info
+    /// Open a `SQLite` connection to the manifest database.
+    ///
+    /// # Returns
+    /// A [`rusqlite::Connection`] to the database file specified by `db_path`.
+    ///
+    /// # Errors
+    /// Returns [`BackupError::Database`] if opening the connection fails.
+    pub fn try_get_connection(&self) -> Result<rusqlite::Connection> {
+        rusqlite::Connection::open(&self.db_path).map_err(BackupError::Database)
     }
 }
 
@@ -133,7 +148,7 @@ impl ManifestDb {
 ///
 /// ```no_run
 /// use crabapple::{Backup, Authentication};
-/// use crabapple::backup::manifest_db;
+/// use crabapple::backup::models::manifest_db;
 ///
 /// let backup = Backup::new(
 ///     "/path/to/backup",
@@ -175,7 +190,7 @@ pub fn query_all_domains(conn: &Connection) -> Result<HashSet<String>> {
 ///
 /// ```no_run
 /// use crabapple::{Backup, Authentication};
-/// use crabapple::backup::manifest_db;
+/// use crabapple::backup::models::manifest_db;
 ///
 /// let backup = Backup::new(
 ///     "/path/to/backup",
@@ -232,7 +247,7 @@ pub fn query_all_files(conn: &Connection) -> Result<Vec<BackupFileEntry>> {
 ///
 /// ```no_run
 /// use crabapple::{Backup, Authentication};
-/// use crabapple::backup::manifest_db;
+/// use crabapple::backup::models::manifest_db;
 ///
 /// let backup = Backup::new(
 ///     "/path/to/backup",

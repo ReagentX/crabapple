@@ -30,7 +30,7 @@ use crate::{
 type Aes256CbcDec = cbc::Decryptor<Aes256>;
 type Aes256CbcEnc = cbc::Encryptor<Aes256>;
 
-/// Buffer size for batch-reading ciphertext (8 KiB)
+/// Buffer size for batch-reading ciphertext (`8 KiB`)
 pub const STREAM_BUFFER_SIZE: usize = 8 * 1024;
 
 /// Derive the `32`-byte encryption key from a user password using `PBKDF2`.
@@ -68,30 +68,30 @@ pub fn derive_key_from_password(
     dpic: u32,
     salt: &[u8],
     iter: u32,
-) -> Result<Vec<u8>> {
+) -> Result<EncryptionKey> {
     let mut derived_pw = vec![0u8; 32]; // iOS backup key is 32 bytes (AES-256)
     let mut key = vec![0u8; 32]; // iOS backup key is 32 bytes (AES-256)
     eprintln!("Deriving key from password...");
     // TODO: Use a faster lib here
     pbkdf2_hmac::<Sha256>(password, dpsl, dpic, &mut derived_pw);
     pbkdf2_hmac::<Sha1>(&derived_pw, salt, iter, &mut key);
-    Ok(key)
+    Ok(key.into())
 }
 
 /// Unwrap (decrypt) all protection class keys from the Manifest's key bag.
 ///
 /// # Arguments
 /// * `master_key` - The derived 32-byte master key (Kmaster).
-/// * `plist_info` - Parsed `Manifest.plist` containing `backup_key_bag`.
+/// * `manifest` - Parsed `Manifest.plist` containing the `key_ring`.
 ///
 /// # Returns
 /// A map of class ID to its unwrapped `AES` key.
 ///
 /// # Errors
-/// Returns `BackupError::Crypto` or `KeyUnwrapFailed` if unwrapping fails.
+/// Returns [`BackupError::Crypto`] or [`BackupError::KeyUnwrapFailed`] if unwrapping fails.
 pub(crate) fn unlock_keys_from_manifest(
     master_key: &EncryptionKey,
-    plist_info: &Manifest,
+    manifest: &Manifest,
 ) -> Result<HashMap<u32, ProtectionClassKey>> {
     if master_key.len() != 32 {
         return Err(BackupError::Crypto(format!(
@@ -100,12 +100,12 @@ pub(crate) fn unlock_keys_from_manifest(
         )));
     }
     let mut unlocked_keys = HashMap::new();
-    let key_bag = plist_info
-        .backup_key_bag
+    let key_ring = manifest
+        .key_ring
         .as_ref()
         .ok_or_else(|| BackupError::Crypto("BackupKeyBag not found in PlistInfo".to_string()))?;
 
-    for (class_id, class_key_data) in &key_bag.class_keys {
+    for (class_id, class_key_data) in &key_ring.class_keys {
         // Skip classes without WPKY
         let Some(wpky) = &class_key_data.wpky else {
             continue;
@@ -255,7 +255,7 @@ pub fn aes_encrypt_cbc_with_padding(data: &[u8], key: &[u8]) -> Result<Vec<u8>> 
     Ok(buffer)
 }
 
-/// Internal helper to unwrap AES Key Wrap (RFC 3394) based on key length.
+/// Internal helper to unwrap `AES` Key Wrap (RFC 3394) based on key length.
 ///
 /// # Arguments
 /// * `kek_bytes` - Key Encryption Key (must be `16`, `24`, or `32` bytes).
@@ -307,73 +307,7 @@ pub(crate) fn aes_kw_unwrap(
     Ok(unwrapped.into())
 }
 
-/// Creates a streaming reader that decrypts `AES-256-CBC` encrypted data from any `Read` source.
-///
-/// The returned `AesCbcDecryptReader` reads [`STREAM_BUFFER_SIZE`]-byte blocks from the underlying ciphertext reader,
-/// decrypts each block using `AES-256-CBC` with a zero IV, and applies `PKCS7` unpadding on the final block.
-/// Only two cipher blocks and one plaintext buffer are held in memory at once.
-///
-/// # Arguments
-/// * `reader` - Source of ciphertext bytes implementing `Read`.
-/// * `key` - `32`-byte `AES-256` decryption key.
-///
-/// # Returns
-/// A streaming reader implementing [`std::io::Read`] that yields plaintext as it's read.
-///
-/// # Errors
-/// Returns [`BackupError::InvalidCryptoDataLength`] if `key` is not exactly `32` bytes.
-/// Returns [`BackupError::Crypto`] if I/O failure occurs or ciphertext is too short/invalid.
-///
-/// # Examples
-///
-/// ```no_run
-/// use std::{fs::File, io::copy};
-/// use crabapple::backup::crypto;
-///
-/// let file = File::open("encrypted.bin").unwrap();
-/// let mut reader = crypto::aes_decrypt_cbc_reader(file, &[0; 32]).unwrap();
-/// let mut plaintext = Vec::new();
-/// copy(&mut reader, &mut plaintext).unwrap();
-/// ```
-pub fn aes_decrypt_cbc_reader<R: Read>(
-    reader: R,
-    key: &[u8],
-) -> Result<AesCbcDecryptReader<BufReader<R>>> {
-    if key.len() != 32 {
-        return Err(BackupError::InvalidCryptoDataLength {
-            expected: 32,
-            actual: key.len(),
-        });
-    }
-    // Wrap source in buffered reader to reduce syscalls
-    let mut buf_reader = BufReader::with_capacity(STREAM_BUFFER_SIZE, reader);
-    // Read first cipher block into lookahead buffer
-    let mut lookahead = [0u8; 16];
-    let n = buf_reader
-        .read(&mut lookahead)
-        .map_err(|e| BackupError::Crypto(format!("I/O error: {e}")))?;
-    if n == 0 {
-        return Err(BackupError::Crypto("Ciphertext empty".into()));
-    }
-    if n != 16 {
-        return Err(BackupError::Crypto(format!(
-            "Unexpected ciphertext length: {n}"
-        )));
-    }
-    let iv = GenericArray::from_slice(&[0u8; 16]);
-    let key_ga = GenericArray::from_slice(key);
-    let cipher = Aes256CbcDec::new(key_ga, iv);
-    Ok(AesCbcDecryptReader {
-        inner: buf_reader,
-        cipher,
-        lookahead,
-        buf: Vec::new(),
-        buf_pos: 0,
-        eof: false,
-    })
-}
-
-/// Streaming AES-256-CBC decryption reader with PKCS7 padding support.
+/// Streaming `AES-256-CBC` decryption reader with PKCS7 padding support.
 ///
 /// `AesCbcDecryptReader` implements [`std::io::Read`], decrypting ciphertext on-the-fly
 /// and yielding plaintext bytes to the caller.
@@ -392,6 +326,71 @@ pub struct AesCbcDecryptReader<R: Read> {
     buf_pos: usize,
     /// Indicates whether the final block (with padding) has been processed.
     eof: bool,
+}
+
+impl<R: Read> AesCbcDecryptReader<R> {
+    /// Creates a streaming reader that decrypts `AES-256-CBC` encrypted data from any `Read` source.
+    ///
+    /// The returned `AesCbcDecryptReader` reads [`STREAM_BUFFER_SIZE`]-byte blocks from the underlying ciphertext reader,
+    /// decrypts each block using `AES-256-CBC` with a zero IV, and applies `PKCS7` unpadding on the final block.
+    /// Only two cipher blocks and one plaintext buffer are held in memory at once.
+    ///
+    /// # Arguments
+    /// * `reader` - Source of ciphertext bytes implementing `Read`.
+    /// * `key` - `32`-byte `AES-256` decryption key.
+    ///
+    /// # Returns
+    /// A streaming reader implementing [`std::io::Read`] that yields plaintext as it's read.
+    ///
+    /// # Errors
+    /// Returns [`BackupError::InvalidCryptoDataLength`] if `key` is not exactly `32` bytes.
+    /// Returns [`BackupError::Crypto`] if I/O failure occurs or ciphertext is too short/invalid.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use std::{fs::File, io::copy};
+    /// use crabapple::backup::crypto::AesCbcDecryptReader;
+    ///
+    /// let file = File::open("encrypted.bin").unwrap();
+    /// let mut reader = AesCbcDecryptReader::from(file, &vec![0; 32].into()).unwrap();
+    /// let mut plaintext = Vec::new();
+    /// copy(&mut reader, &mut plaintext).unwrap();
+    /// ```
+    pub fn from(reader: R, key: &EncryptionKey) -> Result<AesCbcDecryptReader<BufReader<R>>> {
+        if key.len() != 32 {
+            return Err(BackupError::InvalidCryptoDataLength {
+                expected: 32,
+                actual: key.len(),
+            });
+        }
+        // Wrap source in buffered reader to reduce syscalls
+        let mut buf_reader = BufReader::with_capacity(STREAM_BUFFER_SIZE, reader);
+        // Read first cipher block into lookahead buffer
+        let mut lookahead = [0u8; 16];
+        let n = buf_reader
+            .read(&mut lookahead)
+            .map_err(|e| BackupError::Crypto(format!("I/O error: {e}")))?;
+        if n == 0 {
+            return Err(BackupError::Crypto("Ciphertext empty".into()));
+        }
+        if n != 16 {
+            return Err(BackupError::Crypto(format!(
+                "Unexpected ciphertext length: {n}"
+            )));
+        }
+        let iv = GenericArray::from_slice(&[0u8; 16]);
+        let key_ga = GenericArray::from_slice(key);
+        let cipher = Aes256CbcDec::new(key_ga, iv);
+        Ok(AesCbcDecryptReader {
+            inner: buf_reader,
+            cipher,
+            lookahead,
+            buf: Vec::new(),
+            buf_pos: 0,
+            eof: false,
+        })
+    }
 }
 
 impl<R: Read> Read for AesCbcDecryptReader<R> {

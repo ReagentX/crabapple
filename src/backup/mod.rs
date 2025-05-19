@@ -2,7 +2,6 @@
 
 pub mod crypto;
 pub mod device;
-pub mod manifest_db;
 pub mod models;
 pub(crate) mod util;
 
@@ -18,19 +17,18 @@ use rusqlite::Connection;
 use crate::{
     backup::{
         crypto::{
-            aes_decrypt_cbc_with_padding, aes_kw_unwrap, derive_key_from_password,
-            unlock_keys_from_manifest,
+            AesCbcDecryptReader, aes_decrypt_cbc_with_padding, aes_kw_unwrap,
+            derive_key_from_password, unlock_keys_from_manifest,
         },
-        manifest_db::ManifestDb,
         models::{
             auth::Authentication,
             file::BackupFileEntry,
             keyring::EncryptionKey,
             manifest_data::{
-                database::DecryptedManifestDb,
                 lockdown::ManifestLockdownInfo,
                 manifest::{Manifest, ManifestData},
             },
+            manifest_db::{ManifestDb, query_all_domains, query_all_files, query_file_by_id},
         },
         util::hex::{hex_decode, hex_encode},
     },
@@ -47,7 +45,7 @@ pub struct Backup {
     /// Parsed manifest and decryption state.
     pub manifest_data: ManifestData,
     /// Decrypted manifest database handle, if available.
-    decrypted_manifest_db: DecryptedManifestDb,
+    manifest_db: ManifestDb,
     /// Connection to the manifest database
     pub db: Connection,
 }
@@ -58,7 +56,7 @@ impl Backup {
     /// # Arguments
     ///
     /// * `backup_path` - Filesystem path to a specific device backup folder (the UDID directory).
-    /// * `auth` -[`Authentication`] specifying password or derived key.
+    /// * `auth` - [`Authentication`] specifying password or derived key.
     ///
     /// # Errors
     /// Returns [`BackupError`] if paths are invalid, manifest loading fails, or decryption fails.
@@ -100,26 +98,26 @@ impl Backup {
         let manifest = Manifest::load(&manifest_plist)?;
 
         let (main_decryption_key_opt, unlocked_class_keys_opt) = if manifest.is_encrypted {
-            let backup_key_bag = manifest.backup_key_bag.as_ref().ok_or_else(|| {
+            let backup_key_ring = manifest.key_ring.as_ref().ok_or_else(|| {
                 BackupError::MissingPlistKey(
                     "BackupKeyBag (required for encrypted backup)".to_string(),
                 )
             })?;
 
-            let main_derived_key = match auth {
+            let master_key = match auth {
                 Authentication::Password(password) => derive_key_from_password(
                     password.as_bytes(),
-                    &backup_key_bag.dpsl,
-                    backup_key_bag.dpic,
-                    &backup_key_bag.salt,
-                    backup_key_bag.iter,
+                    &backup_key_ring.dpsl,
+                    backup_key_ring.dpic,
+                    &backup_key_ring.salt,
+                    backup_key_ring.iter,
                 )?,
-                Authentication::DerivedKey(key_hex) => hex_decode(key_hex)?,
+                Authentication::DerivedKey(key_hex) => hex_decode(key_hex)?.into(),
             };
 
-            let master_key = EncryptionKey::from(main_derived_key);
+            let unlocked_keys_map = unlock_keys_from_manifest(&master_key, &manifest)
+                .map_err(|_| BackupError::PasswordOrKeyIncorrect)?;
 
-            let unlocked_keys_map = unlock_keys_from_manifest(&master_key, &manifest)?;
             (Some(master_key), Some(unlocked_keys_map))
         } else {
             // For unencrypted backups, password/key should ideally not be provided or be empty.
@@ -134,17 +132,15 @@ impl Backup {
             unlocked_class_keys: unlocked_class_keys_opt.clone(),
         };
 
-        let manifest_db_obj =
-            ManifestDb::new(&device_backup_path.join("Manifest.db"), &manifest_data)?;
+        let manifest_db = ManifestDb::new(&device_backup_path.join("Manifest.db"), &manifest_data)?;
 
         // Create a connection to the manifest database
-        let mdb = manifest_db_obj.into_decrypted_db_info();
-        let conn = mdb.try_get_connection()?;
+        let conn = manifest_db.try_get_connection()?;
 
         Ok(Self {
             backup_path: device_backup_path,
             manifest_data,
-            decrypted_manifest_db: mdb,
+            manifest_db,
             db: conn,
         })
     }
@@ -238,6 +234,31 @@ impl Backup {
 
     /// Get all domains present in the backup's manifest database.
     ///
+    /// Some common domains, in no particular order, include:
+    ///
+    /// * `AppDomain`
+    /// * `AppDomainGroup`
+    /// * `AppDomainPlugin`
+    /// * `CameraRollDomain`
+    /// * `DatabaseDomain`
+    /// * `HealthDomain`
+    /// * `HomeDomain`
+    /// * `HomeKitDomain`
+    /// * `InstallDomain`
+    /// * `KeyboardDomain`
+    /// * `KeychainDomain`
+    /// * `ManagedPreferencesDomain`
+    /// * `MediaDomain`
+    /// * `MobileDeviceDomain`
+    /// * `NetworkDomain`
+    /// * `ProtectedDomain`
+    /// * `RootDomain`
+    /// * `SysContainerDomain`
+    /// * `SysSharedContainerDomain`
+    /// * `SystemPreferencesDomain`
+    /// * `TonesDomain`
+    /// * `WirelessDomain`
+    ///
     /// # Returns
     /// A [`Vec<String>`] containing each unique domain present in the backup.
     ///
@@ -260,7 +281,7 @@ impl Backup {
     /// # Ok::<(), crabapple::error::BackupError>(())
     /// ```
     pub fn query_all_domains(&self) -> Result<HashSet<String>> {
-        manifest_db::query_all_domains(&self.db)
+        query_all_domains(&self.db)
     }
 
     /// Get the filesystem path to the decrypted (or raw) `Manifest.db` file.
@@ -286,13 +307,13 @@ impl Backup {
     /// # Ok::<(), crabapple::error::BackupError>(())
     /// ```
     pub fn get_manifest_db_path(&self) -> &Path {
-        &self.decrypted_manifest_db.db_path
+        &self.manifest_db.db_path
     }
 
     /// List all files recorded in `Manifest.db`.
     ///
     /// # Errors
-    /// Returns `BackupError` if the database cannot be accessed.
+    /// Returns [`BackupError::Database`] if the database cannot be accessed.
     ///
     /// # Examples
     ///
@@ -311,7 +332,7 @@ impl Backup {
     /// # Ok::<(), crabapple::error::BackupError>(())
     /// ```
     pub fn get_backup_files_list(&self) -> Result<Vec<BackupFileEntry>> {
-        manifest_db::query_all_files(&self.db)
+        query_all_files(&self.db)
     }
 
     /// Get a single file entry by its file ID.
@@ -338,7 +359,7 @@ impl Backup {
     /// # Ok::<(), crabapple::error::BackupError>(())
     /// ```
     pub fn get_file(&self, file_id: &str) -> Result<BackupFileEntry> {
-        manifest_db::query_file_by_id(&self.db, file_id)?
+        query_file_by_id(&self.db, file_id)?
             .ok_or_else(|| BackupError::FileNotFoundInBackup(file_id.to_string()))
     }
 
@@ -399,8 +420,7 @@ impl Backup {
                 .manifest_data
                 .get_class_key(entry.metadata.protection_class)?;
 
-            let key = aes_kw_unwrap(&class_key_entry.key, &encryption_key.file_key)
-                .map_err(|_| BackupError::KeyUnwrapFailed(class_key_entry.class_id))?;
+            let key = aes_kw_unwrap(&class_key_entry.key, &encryption_key.file_key)?;
 
             aes_decrypt_cbc_with_padding(&data, &key)
         } else {
@@ -415,6 +435,9 @@ impl Backup {
     ///
     /// # Returns
     /// A streaming reader implementing `std::io::Read` that yields plaintext as it's read.
+    ///
+    /// # Errors
+    /// Returns [`BackupError::Crypto`] on decryption errors or missing keys.
     ///
     /// # Examples
     ///
@@ -444,10 +467,9 @@ impl Backup {
                 .manifest_data
                 .get_class_key(entry.metadata.protection_class)?;
 
-            let key = aes_kw_unwrap(&class_key_entry.key, &encryption_key.file_key)
-                .map_err(|_| BackupError::KeyUnwrapFailed(class_key_entry.class_id))?;
+            let key = aes_kw_unwrap(&class_key_entry.key, &encryption_key.file_key)?;
 
-            return crypto::aes_decrypt_cbc_reader(ciphertext, &key);
+            return AesCbcDecryptReader::from(ciphertext, &key);
         }
         Err(BackupError::KeyUnwrapFailed(
             entry.metadata.protection_class,

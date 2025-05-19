@@ -211,7 +211,7 @@ mod tests_types {
     use crate::backup::models::keyring::{ClassKeyData, KeyRing};
 
     #[test]
-    fn test_backup_key_bag_from_bytes_basic() {
+    fn test_backup_key_ring_from_bytes_basic() {
         // Construct a simple TLV blob: TYPE=1, DPSL=b"aa", DPIC=2, SALT=b"bb", ITER=3
         let mut blob = Vec::new();
         // TYPE

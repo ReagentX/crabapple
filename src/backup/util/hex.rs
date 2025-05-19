@@ -39,7 +39,7 @@ pub(crate) fn hex_encode(bytes: &[u8]) -> String {
     bytes
         .iter()
         .fold(String::with_capacity(bytes.len() * 2), |mut s, &b| {
-            write!(&mut s, "{:02x}", b).unwrap();
+            write!(&mut s, "{b:02x}").unwrap();
             s
         })
 }

@@ -1,4 +1,4 @@
-//! Backup Manifest representation and parsing.
+//! `Manifest.plist` representation and parsing.
 
 use std::{collections::HashMap, fs::File, path::Path};
 
@@ -67,7 +67,7 @@ impl ManifestData {
 #[derive(Debug, Clone)]
 pub struct Manifest {
     /// Optional key bag containing encrypted class keys.
-    pub backup_key_bag: Option<KeyRing>,
+    pub key_ring: Option<KeyRing>,
     /// Whether the backup is encrypted.
     pub is_encrypted: bool,
     /// Device-specific lockdown info.
@@ -106,7 +106,7 @@ impl Manifest {
             BackupError::PlistParseError("Top-level plist is not a dictionary".into())
         })?;
         let is_encrypted = get_key_as_boolean(dict, "IsEncrypted").unwrap_or(false);
-        let backup_key_bag = if is_encrypted {
+        let backup_key_ring = if is_encrypted {
             let data = get_key_as_data(dict, "BackupKeyBag")?;
             Some(KeyRing::from_bytes(&data)?)
         } else {
@@ -123,7 +123,7 @@ impl Manifest {
             .ok_or_else(|| BackupError::MissingPlistKey("Lockdown".into()))?;
         let lockdown = ManifestLockdownInfo::from_plist(lockdown_val)?;
         Ok(Manifest {
-            backup_key_bag,
+            key_ring: backup_key_ring,
             is_encrypted,
             lockdown,
             manifest_key,
