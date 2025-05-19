@@ -1,4 +1,4 @@
-//! Data structures and logic for iOS backup handling
+//! Data structures and logic for iOS backup handling.
 
 pub mod crypto;
 pub mod device;
@@ -16,21 +16,19 @@ use rusqlite::Connection;
 
 use crate::{
     backup::{
-        crypto::{
-            AesCbcDecryptReader, aes_decrypt_cbc_with_padding, aes_kw_unwrap,
-            derive_key_from_password, unlock_keys_from_manifest,
-        },
+        crypto::{AesCbcDecryptReader, aes_decrypt_cbc_with_padding, aes_kw_unwrap},
         models::{
             auth::Authentication,
             file::BackupFileEntry,
             keyring::EncryptionKey,
             manifest::{
+                app::Application,
                 lockdown::ManifestLockdownInfo,
                 manifest_plist::{Manifest, ManifestData},
             },
             manifest_db::{ManifestDb, query_all_domains, query_all_files, query_file_by_id},
         },
-        util::hex::{hex_decode, hex_encode},
+        util::hex::hex_encode,
     },
     error::{BackupError, Result},
 };
@@ -40,12 +38,12 @@ use crate::{
 /// Provides methods to initialize, configure, and extract data from a backup,
 /// including metadata loading, manifest database access, and file decryption.
 pub struct Backup {
-    /// Filesystem path to the specific device backup folder.
+    /// Filesystem path to the specific device backup folder
     pub backup_path: PathBuf,
-    /// Parsed manifest and decryption state.
+    /// Parsed manifest and decryption state
     pub manifest: Manifest,
-    /// Decrypted manifest database handle, if available.
-    manifest_db: ManifestDb,
+    /// Decrypted manifest database details
+    pub manifest_db: ManifestDb,
     /// Connection to the manifest database
     pub db: Connection,
 }
@@ -94,52 +92,17 @@ impl Backup {
             ));
         }
 
-        // Load Manifest.plist and extract necessary keys and info
-        let manifest_data = ManifestData::load(&manifest_plist)?;
-
-        let (main_decryption_key_opt, unlocked_class_keys_opt) = if manifest_data.is_encrypted {
-            let backup_key_ring = manifest_data.key_ring.as_ref().ok_or_else(|| {
-                BackupError::MissingPlistKey(
-                    "BackupKeyBag (required for encrypted backup)".to_string(),
-                )
-            })?;
-
-            let master_key = match auth {
-                Authentication::Password(password) => derive_key_from_password(
-                    password.as_bytes(),
-                    &backup_key_ring.dpsl,
-                    backup_key_ring.dpic,
-                    &backup_key_ring.salt,
-                    backup_key_ring.iter,
-                )?,
-                Authentication::DerivedKey(key_hex) => hex_decode(key_hex)?.into(),
-            };
-
-            let unlocked_keys_map = unlock_keys_from_manifest(&master_key, &manifest_data)
-                .map_err(|_| BackupError::PasswordOrKeyIncorrect)?;
-
-            (Some(master_key), Some(unlocked_keys_map))
-        } else {
-            // For unencrypted backups, password/key should ideally not be provided or be empty.
-            // This logic can be refined based on desired strictness.
-            // For now, just ensuring no decryption attempts are made.
-            (None, None)
-        };
-
-        let manifest_data = Manifest {
-            manifest_data, // Now contains the backup_date
-            main_decryption_key: main_decryption_key_opt.clone(),
-            unlocked_class_keys: unlocked_class_keys_opt.clone(),
-        };
-
-        let manifest_db = ManifestDb::new(&device_backup_path.join("Manifest.db"), &manifest_data)?;
+        // Load `Manifest.plist` and extract necessary keys and info
+        let manifest_data = ManifestData::from_plist(&manifest_plist)?;
+        let manifest = Manifest::from_manifest_data(manifest_data, auth)?;
+        let manifest_db = ManifestDb::new(&device_backup_path.join("Manifest.db"), &manifest)?;
 
         // Create a connection to the manifest database
         let conn = manifest_db.try_get_connection()?;
 
         Ok(Self {
             backup_path: device_backup_path,
-            manifest: manifest_data,
+            manifest,
             manifest_db,
             db: conn,
         })
@@ -172,7 +135,6 @@ impl Backup {
     }
 
     /// Returns device metadata from `Manifest.plist`.
-    #[must_use]
     ///
     /// # Returns
     /// Manifest lockdown information parsed from `Manifest.plist`.
@@ -190,17 +152,76 @@ impl Backup {
     /// let lockdown = backup.lockdown();
     /// println!("Device name: {}", lockdown.device_name);
     /// # Ok::<(), crabapple::error::BackupError>(())
+    #[must_use]
     pub fn lockdown(&self) -> &ManifestLockdownInfo {
         &self.manifest.manifest_data.lockdown
     }
 
     /// Indicates whether the backup is encrypted.
-    #[must_use]
     ///
     /// # Returns
     /// `true` if the backup is encrypted, `false` otherwise.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use crabapple::{Backup, Authentication};
+    ///
+    /// let backup = Backup::new(
+    ///     "/path/to/backup",
+    ///     &Authentication::Password("pass".into()),
+    /// )?;
+    ///
+    /// println!("Encrypted?: {}", backup.is_encrypted());
+    /// # Ok::<(), crabapple::error::BackupError>(())
+    #[must_use]
     pub fn is_encrypted(&self) -> bool {
         self.manifest.manifest_data.is_encrypted
+    }
+
+    /// Get number of applications in the backup.
+    ///
+    /// # Returns
+    /// The number of applications in the backup.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use crabapple::{Backup, Authentication};
+    ///
+    /// let backup = Backup::new(
+    ///     "/path/to/backup",
+    ///     &Authentication::Password("pass".into()),
+    /// )?;
+    ///
+    /// println!("Backup contains {} apps!", backup.num_apps());
+    /// # Ok::<(), crabapple::error::BackupError>(())
+    pub fn num_apps(&self) -> usize {
+        self.manifest.manifest_data.applications.len()
+    }
+
+    /// Get a reference to the applications in the backup.
+    ///
+    /// # Returns
+    /// A reference to a vector of [`Application`] objects parsed from the manifest.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use crabapple::{Backup, Authentication};
+    ///
+    /// let backup = Backup::new(
+    ///     "/path/to/backup",
+    ///     &Authentication::Password("pass".into()),
+    /// )?;
+    ///
+    /// let apps = backup.apps();
+    /// for app in apps {
+    ///    println!("App: {}", app.bundle_id);
+    /// }
+    /// # Ok::<(), crabapple::error::BackupError>(())
+    pub fn apps(&self) -> &Vec<Application> {
+        &self.manifest.manifest_data.applications
     }
 
     /// Returns the main decryption key as a hex string, if the backup is encrypted.
@@ -230,6 +251,31 @@ impl Backup {
             .main_decryption_key
             .as_ref()
             .map(|v| hex_encode(v))
+    }
+
+    /// Retrieve the raw 32-byte decryption key, if available.
+    ///
+    /// # Returns
+    /// An `Option<KeyEncryptionKey>` containing the main decryption key, or `None` if not encrypted.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use crabapple::{Backup, Authentication};
+    ///
+    /// let backup = Backup::new(
+    ///     "/path/to/backup",
+    ///     &Authentication::Password("pass".into()),
+    /// )?;
+    ///
+    /// if let Some(key) = backup.get_decryption_key() {
+    ///     println!("Key: {:?}", key);
+    /// }
+    /// # Ok::<(), crabapple::error::BackupError>(())
+    /// ```
+    #[must_use]
+    pub fn get_decryption_key(&self) -> Option<EncryptionKey> {
+        self.manifest.main_decryption_key.clone()
     }
 
     /// Get all domains present in the backup's manifest database.
@@ -363,15 +409,6 @@ impl Backup {
             .ok_or_else(|| BackupError::FileNotFoundInBackup(file_id.to_string()))
     }
 
-    /// Retrieve the raw 32-byte decryption key, if available.
-    #[must_use]
-    ///
-    /// # Returns
-    /// An `Option<KeyEncryptionKey>` containing the main decryption key, or `None` if not encrypted.
-    pub fn get_decryption_key(&self) -> Option<EncryptionKey> {
-        self.manifest.main_decryption_key.clone()
-    }
-
     /// Access parsed `Manifest.plist` metadata.
     #[must_use]
     ///
@@ -415,6 +452,7 @@ impl Backup {
 
         let data = read(&source)?;
 
+        // TODO: this is repeated in `Backup::decrypt_entry_stream`, clean it up
         if let Some(encryption_key) = &entry.metadata.encryption_key {
             let class_key_entry = self
                 .manifest
@@ -431,7 +469,7 @@ impl Backup {
     /// Decrypt a file stream using AES-256-CBC with PKCS7 padding.
     ///
     /// # Arguments
-    /// * `ciphertext` - A reader over the encrypted file bytes.
+    /// * `entry` - A [`BackupFileEntry`] containing metadata and encrypted file ID.
     ///
     /// # Returns
     /// A streaming reader implementing `std::io::Read` that yields plaintext as it's read.
@@ -462,6 +500,7 @@ impl Backup {
     ) -> Result<crypto::AesCbcDecryptReader<BufReader<File>>> {
         let ciphertext = File::open(self.backup_path.join(entry.source()))?;
 
+        // TODO: this is repeated in `Backup::decrypt_entry`, clean it up
         if let Some(encryption_key) = &entry.metadata.encryption_key {
             let class_key_entry = self
                 .manifest
