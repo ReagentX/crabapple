@@ -38,7 +38,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let backup = Backup::open(udid_folder, &auth)?;
 
     // List all files in the backup
-    let entries = backup.files()?;
+    let entries = backup.entries()?;
     for entry in &entries {
         println!("{} - {}/{}", entry.file_id, entry.domain, entry.relative_path);
     }

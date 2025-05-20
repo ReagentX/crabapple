@@ -26,7 +26,7 @@ use crate::{
                 lockdown::ManifestLockdownInfo,
                 manifest_plist::{Manifest, ManifestData},
             },
-            manifest_db::{ManifestDb, query_all_domains, query_all_files, query_file_by_id},
+            manifest_db::{ManifestDb, query_all_domains, query_all_entries, query_file_by_id},
         },
         util::hex::hex_encode,
     },
@@ -369,14 +369,14 @@ impl Backup {
     ///     &Authentication::Password("pass".into()),
     /// )?;
     ///
-    /// let files = backup.files()?;
-    /// for file in files {
-    ///     println!("{:?}", file);
+    /// let entries = backup.entries()?;
+    /// for entry in entries {
+    ///     println!("{:?}", entry);
     /// }
     /// # Ok::<(), crabapple::error::BackupError>(())
     /// ```
-    pub fn files(&self) -> Result<Vec<BackupFileEntry>> {
-        query_all_files(&self.db)
+    pub fn entries(&self) -> Result<Vec<BackupFileEntry>> {
+        query_all_entries(&self.db)
     }
 
     /// Get a single file entry by its file ID.

@@ -211,11 +211,11 @@ pub fn query_all_domains(conn: &Connection) -> Result<HashSet<String>> {
 ///     &Authentication::Password("pass".into())
 /// )?;
 ///
-/// let files = manifest_db::query_all_files(&backup.db)?;
-/// println!("File count: {}", files.len());
+/// let entries = manifest_db::query_all_entries(&backup.db)?;
+/// println!("File count: {}", entries.len());
 /// # Ok::<(), crabapple::error::BackupError>(())
 /// ```
-pub fn query_all_files(conn: &Connection) -> Result<Vec<BackupFileEntry>> {
+pub fn query_all_entries(conn: &Connection) -> Result<Vec<BackupFileEntry>> {
     let mut stmt =
         conn.prepare("SELECT rowid, fileID, domain, relativePath, flags, file FROM Files")?;
     let mut rows = stmt.query([])?;
@@ -227,11 +227,12 @@ pub fn query_all_files(conn: &Connection) -> Result<Vec<BackupFileEntry>> {
             .blob_open(rusqlite::DatabaseName::Main, "Files", "file", file_id, true)
             .map_err(BackupError::Database)?;
 
-        let plist = Value::from_reader(blob)
-            .map_err(|_| BackupError::InvalidTlvData("Failed to parse file plist".to_string()))?;
+        let plist = Value::from_reader(blob).map_err(|_| {
+            BackupError::PlistParseError("Failed to parse `file` plist".to_string())
+        })?;
 
         let mbfile = MBFile::from_plist(&plist).map_err(|_| {
-            BackupError::InvalidTlvData("Failed to parse MBFile from plist".to_string())
+            BackupError::PlistParseError("Failed to parse `MBFile` from plist".to_string())
         })?;
 
         entries.push(BackupFileEntry {
