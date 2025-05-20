@@ -35,10 +35,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize a backup session for a device UDID with a password
     let udid_folder = "/Users/you/Library/Application Support/MobileSync/Backup/DEVICE_UDID";
     let auth = Authentication::Password("your_password".into());
-    let backup = Backup::new(udid_folder, &auth)?;
+    let backup = Backup::open(udid_folder, &auth)?;
 
     // List all files in the backup
-    let entries = backup.get_backup_files_list()?;
+    let entries = backup.files()?;
     for entry in &entries {
         println!("{} - {}/{}", entry.file_id, entry.domain, entry.relative_path);
     }
@@ -58,7 +58,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Get the derived key for use elsewhere:
-    let derived_key = backup.get_decryption_key_hex();
+    let derived_key = backup.decryption_key_hex();
 
     Ok(())
 }
@@ -75,7 +75,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let udid_folder = "/path/to/backup";
     let hex_key = "abcdef0123456789...";
     let auth = Authentication::DerivedKey(hex_key.to_string());
-    let backup = Backup::new(udid_folder, &auth)?;
+    let backup = Backup::open(udid_folder, &auth)?;
     // ... proceed as normal
     Ok(())
 }
@@ -108,7 +108,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let udid_folder = "/path/to/backup";
     let hex_key = "abcdef0123456789...";
     let auth = Authentication::DerivedKey(hex_key.to_string());
-    let backup = Backup::new(udid_folder, &auth)?;
+    let backup = Backup::open(udid_folder, &auth)?;
     
     println!("Device: {} (iOS {})",
         backup.lockdown().device_name,
@@ -127,12 +127,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 use crabapple::{Backup, Authentication};
 use crabapple::error::BackupError;
 
-match Backup::new("/bad/path", &Authentication::Password("pass".into())) {
+match Backup::open("/bad/path", &Authentication::Password("pass".into())) {
     Ok(b) => println!("Loaded backup successfully"),
     Err(BackupError::ManifestPlistNotFound(path)) => eprintln!("Missing Manifest.plist: {}", path),
     Err(err) => eprintln!("Error initializing backup: {}", err),
 }
 ```
+
+## Targeted Versions
+
+This library targets the current latest public release for iOS. It should work with backups from iOS 10.2 or later, but all features may not be available.
 
 ## Crabapple Tree
 

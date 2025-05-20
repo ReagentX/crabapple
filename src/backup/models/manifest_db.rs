@@ -23,6 +23,7 @@ use crate::{
 };
 
 /// Represents the backup's `Manifest.db`, decrypted if necessary, and holds decryption info.
+#[derive(Debug)]
 pub struct ManifestDb {
     /// Path to the `SQLite` database file.
     pub db_path: PathBuf,
@@ -50,12 +51,12 @@ impl ManifestDb {
     /// use crabapple::{Backup, Authentication};
     /// use crabapple::backup::models::manifest_db;
     ///
-    /// let backup = Backup::new(
+    /// let backup = Backup::open(
     ///     "/path/to/backup",
     ///     &Authentication::Password("pass".into())
     /// )?;
     ///
-    /// let db_path = backup.get_manifest_db_path();
+    /// let db_path = backup.manifest_db_path();
     /// # Ok::<(), crabapple::error::BackupError>(())
     /// ```
     pub fn new(db_path: &Path, manifest: &Manifest) -> Result<Self> {
@@ -64,16 +65,17 @@ impl ManifestDb {
         }
 
         let decrypted_db_info = if manifest.manifest_data.is_encrypted {
-            let manifest_key_bytes = manifest
-                .manifest_data
-                .manifest_key
-                .as_ref()
-                .ok_or_else(|| {
-                    BackupError::Crypto(
-                        "ManifestKey data not found in PlistInfo for encrypted Manifest.db"
-                            .to_string(),
-                    )
-                })?;
+            let manifest_key_bytes =
+                manifest
+                    .manifest_data
+                    .manifest_key
+                    .as_ref()
+                    .ok_or_else(|| {
+                        BackupError::Crypto(
+                            "ManifestKey data not found in PlistInfo for encrypted Manifest.db"
+                                .to_string(),
+                        )
+                    })?;
 
             // The first 4 bytes of `manifest_key_bytes` are interpreted as a little-endian
             // `u32` protection class identifier. The remainder is treated as an AES-key-wrapped
@@ -83,11 +85,9 @@ impl ManifestDb {
             // 2. Look up the corresponding unwrapped class key in `class_keys`.
             // 3. Unwrap the file-specific AES key using AES-Key-Wrap.
             // 4. Decrypt `ciphertext` with AES-256-CBC (zero IV), stripping PKCS#7 padding.
-            // TODO: this is repeated in `Backup::decrypt_entry`, clean it up
             let manifest_file_key = FileKeyPair::new(manifest_key_bytes)?;
 
-            let class_key_entry =
-                manifest.get_class_key(manifest_file_key.protection_class_id)?;
+            let class_key_entry = manifest.get_class_key(manifest_file_key.protection_class_id)?;
 
             let key = aes_kw_unwrap(&class_key_entry.key, &manifest_file_key.file_key)
                 .map_err(|_| BackupError::KeyUnwrapFailed(manifest_file_key.protection_class_id))?;
@@ -96,7 +96,7 @@ impl ManifestDb {
             let db_bytes = File::open(db_path)?;
             let mut decrypted_manifest_db_stream = AesCbcDecryptReader::from(&db_bytes, &key)?;
 
-            // Write decrypted Manifest.db into the platform-specific temporary directory
+            // Write decrypted Manifest.db into a platform-specific temporary directory
             let tmp_path = std::env::temp_dir().join("crabapple-Manifest.db");
             let mut file = File::create(&tmp_path)?;
 
@@ -164,7 +164,7 @@ impl Drop for ManifestDb {
 /// use crabapple::{Backup, Authentication};
 /// use crabapple::backup::models::manifest_db;
 ///
-/// let backup = Backup::new(
+/// let backup = Backup::open(
 ///     "/path/to/backup",
 ///     &Authentication::Password("pass".into())
 /// )?;
@@ -206,7 +206,7 @@ pub fn query_all_domains(conn: &Connection) -> Result<HashSet<String>> {
 /// use crabapple::{Backup, Authentication};
 /// use crabapple::backup::models::manifest_db;
 ///
-/// let backup = Backup::new(
+/// let backup = Backup::open(
 ///     "/path/to/backup",
 ///     &Authentication::Password("pass".into())
 /// )?;
@@ -263,7 +263,7 @@ pub fn query_all_files(conn: &Connection) -> Result<Vec<BackupFileEntry>> {
 /// use crabapple::{Backup, Authentication};
 /// use crabapple::backup::models::manifest_db;
 ///
-/// let backup = Backup::new(
+/// let backup = Backup::open(
 ///     "/path/to/backup",
 ///     &Authentication::Password("pass".into())
 /// )?;
