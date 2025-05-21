@@ -135,21 +135,6 @@ impl ManifestDb {
     }
 }
 
-impl Drop for ManifestDb {
-    fn drop(&mut self) {
-        if self.is_temporary {
-            // Remove the file, ignoring errors if any
-            if let Err(e) = remove_file(&self.db_path) {
-                eprintln!(
-                    "warning: failed to remove temporary `Manifest.db` file at {}: {}",
-                    self.db_path.display(),
-                    e
-                );
-            }
-        }
-    }
-}
-
 /// Query all unique domains present in the `Manifest.db`.
 ///
 /// # Arguments
