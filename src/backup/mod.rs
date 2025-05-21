@@ -7,7 +7,7 @@ pub(crate) mod util;
 
 use std::{
     collections::HashSet,
-    fs::{File, read},
+    fs::{File, read, remove_file},
     io::BufReader,
     path::{Path, PathBuf},
 };
@@ -46,7 +46,7 @@ pub struct Backup {
     /// Decrypted manifest database details
     pub manifest_db: ManifestDb,
     /// Connection to the manifest database
-    pub db: Connection,
+    pub db: Option<Connection>,
 }
 
 impl Backup {
@@ -105,7 +105,7 @@ impl Backup {
             backup_path: device_backup_path,
             manifest,
             manifest_db,
-            db: conn,
+            db: Some(conn),
         })
     }
 
@@ -328,7 +328,7 @@ impl Backup {
     /// # Ok::<(), crabapple::error::BackupError>(())
     /// ```
     pub fn query_all_domains(&self) -> Result<HashSet<String>> {
-        query_all_domains(&self.db)
+        query_all_domains(self.db.as_ref().ok_or(BackupError::DatabaseClosed)?)
     }
 
     /// Get the filesystem path to the decrypted (or raw) `Manifest.db` file.
@@ -376,7 +376,7 @@ impl Backup {
     /// # Ok::<(), crabapple::error::BackupError>(())
     /// ```
     pub fn entries(&self) -> Result<Vec<BackupFileEntry>> {
-        query_all_entries(&self.db)
+        query_all_entries(self.db.as_ref().ok_or(BackupError::DatabaseClosed)?)
     }
 
     /// Get a single file entry by its file ID.
@@ -403,8 +403,11 @@ impl Backup {
     /// # Ok::<(), crabapple::error::BackupError>(())
     /// ```
     pub fn get_file(&self, file_id: &str) -> Result<BackupFileEntry> {
-        query_file_by_id(&self.db, file_id)?
-            .ok_or_else(|| BackupError::FileNotFoundInBackup(file_id.to_string()))
+        query_file_by_id(
+            self.db.as_ref().ok_or(BackupError::DatabaseClosed)?,
+            file_id,
+        )?
+        .ok_or_else(|| BackupError::FileNotFoundInBackup(file_id.to_string()))
     }
 
     /// Access parsed `Manifest.plist` metadata.
@@ -528,5 +531,24 @@ impl Backup {
         )?;
 
         Ok(key)
+    }
+}
+
+impl Drop for Backup {
+    fn drop(&mut self) {
+        if self.manifest_db.is_temporary {
+            if let Some(conn) = self.db.take() {
+                conn.close().ok();
+
+                // Remove the file, ignoring errors if any
+                if let Err(e) = remove_file(&self.manifest_db.db_path) {
+                    eprintln!(
+                        "warning: failed to remove temporary `Manifest.db` file at {}: {}",
+                        self.manifest_db.db_path.display(),
+                        e
+                    );
+                }
+            }
+        }
     }
 }
