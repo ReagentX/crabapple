@@ -2,7 +2,7 @@
 
 use std::{
     collections::HashSet,
-    fs::File,
+    fs::{File, remove_file},
     io::copy,
     path::{Path, PathBuf},
 };
@@ -33,6 +33,8 @@ pub struct ManifestDb {
     pub connection_string: String,
     /// Optional hex-encoded decryption key used to decrypt the database.
     pub decryption_key: Option<String>,
+    /// Connection to the manifest database
+    pub conn: Option<Connection>,
 }
 
 impl ManifestDb {
@@ -106,10 +108,11 @@ impl ManifestDb {
             })?;
 
             Self {
-                db_path: tmp_path,
+                db_path: tmp_path.clone(),
                 is_temporary: true,
                 connection_string: db_path.to_string_lossy().into_owned(), // Path for direct open
                 decryption_key: Some(hex_encode(&key)),
+                conn: Some(Connection::open(tmp_path).map_err(BackupError::Database)?),
             }
         } else {
             Self {
@@ -117,176 +120,210 @@ impl ManifestDb {
                 is_temporary: false,
                 connection_string: db_path.to_string_lossy().into_owned(),
                 decryption_key: None,
+                conn: Some(Connection::open(db_path).map_err(BackupError::Database)?),
             }
         };
 
         Ok(decrypted_db_info)
     }
 
-    /// Open a `SQLite` connection to the manifest database.
+    /// Returns the current manifest database connection, if available.
     ///
     /// # Returns
-    /// A [`rusqlite::Connection`] to the database file specified by `db_path`.
+    /// An [`Result<Connection>`] representing the current database connection.
+    ///
+    /// # Examples
+    /// ```no_run
+    /// use crabapple::{Backup, Authentication};
+    ///
+    /// let backup = Backup::open(
+    ///     "/path/to/backup",
+    ///     &Authentication::Password("pass".into()),
+    /// )?;
+    ///
+    /// let db = backup.db()?;
+    /// println!("Database connection: {:?}", db);
+    /// # Ok::<(), crabapple::error::BackupError>(())
+    pub fn db(&self) -> Result<&Connection> {
+        self.conn.as_ref().ok_or(BackupError::DatabaseClosed)
+    }
+
+    /// Query all unique domains present in the `Manifest.db`.
+    ///
+    /// # Arguments
+    /// * `conn` - An open [`rusqlite::Connection`] to the manifest database.
     ///
     /// # Errors
-    /// Returns [`BackupError::Database`] if opening the connection fails.
-    pub fn try_get_connection(&self) -> Result<rusqlite::Connection> {
-        rusqlite::Connection::open(&self.db_path).map_err(BackupError::Database)
+    /// Returns `BackupError::Database` on query failures.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use crabapple::{Backup, Authentication};
+    /// use crabapple::backup::models::manifest_db;
+    ///
+    /// let backup = Backup::open(
+    ///     "/path/to/backup",
+    ///     &Authentication::Password("pass".into())
+    /// )?;
+    ///
+    /// let domains = backup.manifest_db.query_all_domains()?;
+    /// println!("Domains: {:?}", domains);
+    /// # Ok::<(), crabapple::error::BackupError>(())
+    /// ```
+    pub fn query_all_domains(&self) -> Result<HashSet<String>> {
+        let mut stmt = self.db()?.prepare(
+            "SELECT DISTINCT
+                 CASE
+                     WHEN INSTR(domain, '-') > 0
+                     THEN SUBSTR(domain, 1, INSTR(domain, '-') - 1)
+                     ELSE
+                     domain
+                 END AS domain
+                 FROM Files;",
+        )?;
+        let mut rows = stmt.query([])?;
+        let mut domains = HashSet::new();
+        while let Some(row) = rows.next()? {
+            domains.insert(row.get(0)?);
+        }
+        Ok(domains)
+    }
+
+    /// Query all file entries from the `Manifest.db`.
+    ///
+    /// # Arguments
+    /// * `conn` - An open rusqlite `Connection`.
+    ///
+    /// # Errors
+    /// Returns [`BackupError::Database`] if the `SQL` query or blob reading fails.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use crabapple::{Backup, Authentication};
+    /// use crabapple::backup::models::manifest_db;
+    ///
+    /// let backup = Backup::open(
+    ///     "/path/to/backup",
+    ///     &Authentication::Password("pass".into())
+    /// )?;
+    ///
+    /// let entries = backup.manifest_db.query_all_entries()?;
+    /// println!("File count: {}", entries.len());
+    /// # Ok::<(), crabapple::error::BackupError>(())
+    /// ```
+    pub fn query_all_entries(&self) -> Result<Vec<BackupFileEntry>> {
+        let mut stmt = self
+            .db()?
+            .prepare("SELECT rowid, fileID, domain, relativePath, flags, file FROM Files")?;
+        let mut rows = stmt.query([])?;
+        let mut entries = Vec::new();
+        while let Some(row) = rows.next()? {
+            let file_id = row.get(0)?;
+
+            let blob = self
+                .db()?
+                .blob_open(rusqlite::DatabaseName::Main, "Files", "file", file_id, true)
+                .map_err(BackupError::Database)?;
+
+            let plist = Value::from_reader(blob).map_err(|_| {
+                BackupError::PlistParseError("Failed to parse `file` plist".to_string())
+            })?;
+
+            let mbfile = MBFile::from_plist(&plist).map_err(|_| {
+                BackupError::PlistParseError("Failed to parse `MBFile` from plist".to_string())
+            })?;
+
+            entries.push(BackupFileEntry {
+                file_id: row.get(1)?,
+                domain: row.get(2)?,
+                relative_path: row.get(3)?,
+                flags: row.get(4)?,
+                metadata: mbfile, // Store the plist as metadata
+            });
+        }
+        Ok(entries)
+    }
+
+    /// Query a single file entry by its file ID in the `Manifest.db`.
+    ///
+    /// # Arguments
+    /// * `conn` - An open rusqlite `Connection`.
+    /// * `path` - The `fileID` to look up in the `Files` table.
+    ///
+    /// # Returns
+    /// `Ok(Some(entry))` if found, `Ok(None)` if not found.
+    ///
+    /// # Errors
+    /// Returns [`BackupError::Database`] on query failures.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use crabapple::{Backup, Authentication};
+    /// use crabapple::backup::models::manifest_db;
+    ///
+    /// let backup = Backup::open(
+    ///     "/path/to/backup",
+    ///     &Authentication::Password("pass".into())
+    /// )?;
+    ///
+    /// if let Some(entry) = backup.manifest_db.query_file_by_id("fileid")? {
+    ///     println!("Found file: {}", entry.file_id);
+    /// }
+    /// # Ok::<(), crabapple::error::BackupError>(())
+    /// ```
+    pub fn query_file_by_id(&self, path: &str) -> Result<Option<BackupFileEntry>> {
+        // Path in DB is typically Domain-RelativePath
+        let mut stmt = self.db()?.prepare(
+            "SELECT rowid, fileID, domain, relativePath, flags, file FROM Files WHERE fileID = ?",
+        )?;
+        let mut rows = stmt.query([path])?;
+        if let Some(row) = rows.next()? {
+            let file_id = row.get(0)?;
+
+            let blob = self
+                .db()?
+                .blob_open(rusqlite::DatabaseName::Main, "Files", "file", file_id, true)
+                .map_err(BackupError::Database)?;
+
+            let plist = Value::from_reader(blob).map_err(|_| {
+                BackupError::InvalidTlvData("Failed to parse file plist".to_string())
+            })?;
+
+            let mbfile = MBFile::from_plist(&plist).map_err(|_| {
+                BackupError::InvalidTlvData("Failed to parse MBFile from plist".to_string())
+            })?;
+
+            Ok(Some(BackupFileEntry {
+                file_id: row.get(1)?,
+                domain: row.get(2)?,
+                relative_path: row.get(3)?,
+                flags: row.get(4)?,
+                metadata: mbfile, // Store the plist as metadata
+            }))
+        } else {
+            Ok(None)
+        }
     }
 }
 
-/// Query all unique domains present in the `Manifest.db`.
-///
-/// # Arguments
-/// * `conn` - An open [`rusqlite::Connection`] to the manifest database.
-///
-/// # Errors
-/// Returns `BackupError::Database` on query failures.
-///
-/// # Examples
-///
-/// ```no_run
-/// use crabapple::{Backup, Authentication};
-/// use crabapple::backup::models::manifest_db;
-///
-/// let backup = Backup::open(
-///     "/path/to/backup",
-///     &Authentication::Password("pass".into())
-/// )?;
-///
-/// let domains = manifest_db::query_all_domains(backup.db().unwrap())?;
-/// println!("Domains: {:?}", domains);
-/// # Ok::<(), crabapple::error::BackupError>(())
-/// ```
-pub fn query_all_domains(conn: &Connection) -> Result<HashSet<String>> {
-    let mut stmt = conn.prepare(
-        "SELECT DISTINCT
-             CASE
-                 WHEN INSTR(domain, '-') > 0
-                 THEN SUBSTR(domain, 1, INSTR(domain, '-') - 1)
-                 ELSE
-                 domain
-             END AS domain
-             FROM Files;",
-    )?;
-    let mut rows = stmt.query([])?;
-    let mut domains = HashSet::new();
-    while let Some(row) = rows.next()? {
-        domains.insert(row.get(0)?);
-    }
-    Ok(domains)
-}
+impl Drop for ManifestDb {
+    fn drop(&mut self) {
+        if self.is_temporary {
+            if let Some(conn) = self.conn.take() {
+                conn.close().ok();
 
-/// Query all file entries from the `Manifest.db`.
-///
-/// # Arguments
-/// * `conn` - An open rusqlite `Connection`.
-///
-/// # Errors
-/// Returns [`BackupError::Database`] if the `SQL` query or blob reading fails.
-///
-/// # Examples
-///
-/// ```no_run
-/// use crabapple::{Backup, Authentication};
-/// use crabapple::backup::models::manifest_db;
-///
-/// let backup = Backup::open(
-///     "/path/to/backup",
-///     &Authentication::Password("pass".into())
-/// )?;
-///
-/// let entries = manifest_db::query_all_entries(backup.db().unwrap())?;
-/// println!("File count: {}", entries.len());
-/// # Ok::<(), crabapple::error::BackupError>(())
-/// ```
-pub fn query_all_entries(conn: &Connection) -> Result<Vec<BackupFileEntry>> {
-    let mut stmt =
-        conn.prepare("SELECT rowid, fileID, domain, relativePath, flags, file FROM Files")?;
-    let mut rows = stmt.query([])?;
-    let mut entries = Vec::new();
-    while let Some(row) = rows.next()? {
-        let file_id = row.get(0)?;
-
-        let blob = conn
-            .blob_open(rusqlite::DatabaseName::Main, "Files", "file", file_id, true)
-            .map_err(BackupError::Database)?;
-
-        let plist = Value::from_reader(blob).map_err(|_| {
-            BackupError::PlistParseError("Failed to parse `file` plist".to_string())
-        })?;
-
-        let mbfile = MBFile::from_plist(&plist).map_err(|_| {
-            BackupError::PlistParseError("Failed to parse `MBFile` from plist".to_string())
-        })?;
-
-        entries.push(BackupFileEntry {
-            file_id: row.get(1)?,
-            domain: row.get(2)?,
-            relative_path: row.get(3)?,
-            flags: row.get(4)?,
-            metadata: mbfile, // Store the plist as metadata
-        });
-    }
-    Ok(entries)
-}
-
-/// Query a single file entry by its file ID in the `Manifest.db`.
-///
-/// # Arguments
-/// * `conn` - An open rusqlite `Connection`.
-/// * `path` - The `fileID` to look up in the `Files` table.
-///
-/// # Returns
-/// `Ok(Some(entry))` if found, `Ok(None)` if not found.
-///
-/// # Errors
-/// Returns [`BackupError::Database`] on query failures.
-///
-/// # Examples
-///
-/// ```no_run
-/// use crabapple::{Backup, Authentication};
-/// use crabapple::backup::models::manifest_db;
-///
-/// let backup = Backup::open(
-///     "/path/to/backup",
-///     &Authentication::Password("pass".into())
-/// )?;
-///
-/// if let Some(entry) = manifest_db::query_file_by_id(backup.db().unwrap(), "fileid")? {
-///     println!("Found file: {}", entry.file_id);
-/// }
-/// # Ok::<(), crabapple::error::BackupError>(())
-/// ```
-pub fn query_file_by_id(conn: &Connection, path: &str) -> Result<Option<BackupFileEntry>> {
-    // Path in DB is typically Domain-RelativePath
-    let mut stmt = conn.prepare(
-        "SELECT rowid, fileID, domain, relativePath, flags, file FROM Files WHERE fileID = ?",
-    )?;
-    let mut rows = stmt.query([path])?;
-    if let Some(row) = rows.next()? {
-        let file_id = row.get(0)?;
-
-        let blob = conn
-            .blob_open(rusqlite::DatabaseName::Main, "Files", "file", file_id, true)
-            .map_err(BackupError::Database)?;
-
-        let plist = Value::from_reader(blob)
-            .map_err(|_| BackupError::InvalidTlvData("Failed to parse file plist".to_string()))?;
-
-        let mbfile = MBFile::from_plist(&plist).map_err(|_| {
-            BackupError::InvalidTlvData("Failed to parse MBFile from plist".to_string())
-        })?;
-
-        Ok(Some(BackupFileEntry {
-            file_id: row.get(1)?,
-            domain: row.get(2)?,
-            relative_path: row.get(3)?,
-            flags: row.get(4)?,
-            metadata: mbfile, // Store the plist as metadata
-        }))
-    } else {
-        Ok(None)
+                // Remove the file, ignoring errors if any
+                if let Err(e) = remove_file(&self.db_path) {
+                    eprintln!(
+                        "warning: failed to remove temporary `Manifest.db` file at {}: {}",
+                        self.db_path.display(),
+                        e
+                    );
+                }
+            }
+        }
     }
 }

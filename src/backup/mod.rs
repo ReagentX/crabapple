@@ -7,7 +7,7 @@ pub(crate) mod util;
 
 use std::{
     collections::HashSet,
-    fs::{File, read, remove_file},
+    fs::{File, read},
     io::BufReader,
     path::{Path, PathBuf},
 };
@@ -26,7 +26,7 @@ use crate::{
                 lockdown::ManifestLockdownInfo,
                 manifest_plist::{Manifest, ManifestData},
             },
-            manifest_db::{ManifestDb, query_all_domains, query_all_entries, query_file_by_id},
+            manifest_db::ManifestDb,
         },
         util::hex::hex_encode,
     },
@@ -45,8 +45,6 @@ pub struct Backup {
     pub manifest: Manifest,
     /// Decrypted manifest database details
     pub manifest_db: ManifestDb,
-    /// Connection to the manifest database
-    pub db: Option<Connection>,
 }
 
 impl Backup {
@@ -98,18 +96,14 @@ impl Backup {
         let manifest = Manifest::from_manifest_data(manifest_data, auth)?;
         let manifest_db = ManifestDb::new(&device_backup_path.join("Manifest.db"), &manifest)?;
 
-        // Create a connection to the manifest database
-        let conn = manifest_db.try_get_connection()?;
-
         Ok(Self {
             backup_path: device_backup_path,
             manifest,
             manifest_db,
-            db: Some(conn),
         })
     }
 
-    /// Returns the current database connection, if available.
+    /// Returns the current manifest database connection, if available.
     ///
     /// # Returns
     /// An [`Result<Connection>`] representing the current database connection.
@@ -127,7 +121,7 @@ impl Backup {
     /// println!("Database connection: {:?}", db);
     /// # Ok::<(), crabapple::error::BackupError>(())
     pub fn db(&self) -> Result<&Connection> {
-        self.db.as_ref().ok_or(BackupError::DatabaseClosed)
+        self.manifest_db.db()
     }
 
     /// Returns the current device `UDID` (the backup folder name).
@@ -349,7 +343,7 @@ impl Backup {
     /// # Ok::<(), crabapple::error::BackupError>(())
     /// ```
     pub fn query_all_domains(&self) -> Result<HashSet<String>> {
-        query_all_domains(self.db()?)
+        self.manifest_db.query_all_domains()
     }
 
     /// Get the filesystem path to the decrypted (or raw) `Manifest.db` file.
@@ -397,7 +391,7 @@ impl Backup {
     /// # Ok::<(), crabapple::error::BackupError>(())
     /// ```
     pub fn entries(&self) -> Result<Vec<BackupFileEntry>> {
-        query_all_entries(self.db()?)
+        self.manifest_db.query_all_entries()
     }
 
     /// Get a single file entry by its file ID.
@@ -424,7 +418,8 @@ impl Backup {
     /// # Ok::<(), crabapple::error::BackupError>(())
     /// ```
     pub fn get_file(&self, file_id: &str) -> Result<BackupFileEntry> {
-        query_file_by_id(self.db()?, file_id)?
+        self.manifest_db
+            .query_file_by_id(file_id)?
             .ok_or_else(|| BackupError::FileNotFoundInBackup(file_id.to_string()))
     }
 
@@ -549,24 +544,5 @@ impl Backup {
         )?;
 
         Ok(key)
-    }
-}
-
-impl Drop for Backup {
-    fn drop(&mut self) {
-        if self.manifest_db.is_temporary {
-            if let Some(conn) = self.db.take() {
-                conn.close().ok();
-
-                // Remove the file, ignoring errors if any
-                if let Err(e) = remove_file(&self.manifest_db.db_path) {
-                    eprintln!(
-                        "warning: failed to remove temporary `Manifest.db` file at {}: {}",
-                        self.manifest_db.db_path.display(),
-                        e
-                    );
-                }
-            }
-        }
     }
 }
