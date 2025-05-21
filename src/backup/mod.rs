@@ -108,6 +108,9 @@ impl Backup {
     /// # Returns
     /// An [`Result<Connection>`] representing the current database connection.
     ///
+    /// # Errors
+    /// Returns [`BackupError::DatabaseClosed`] if the manifest database connection is closed.
+    ///
     /// # Examples
     /// ```no_run
     /// use crabapple::{Backup, Authentication};
