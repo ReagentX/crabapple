@@ -2,7 +2,7 @@
 
 use std::{
     collections::HashSet,
-    fs::{File, remove_file},
+    fs::File,
     io::copy,
     path::{Path, PathBuf},
 };
@@ -154,7 +154,7 @@ impl ManifestDb {
 ///     &Authentication::Password("pass".into())
 /// )?;
 ///
-/// let domains = manifest_db::query_all_domains(&backup.db)?;
+/// let domains = manifest_db::query_all_domains(backup.db.as_ref().unwrap())?;
 /// println!("Domains: {:?}", domains);
 /// # Ok::<(), crabapple::error::BackupError>(())
 /// ```
@@ -196,7 +196,7 @@ pub fn query_all_domains(conn: &Connection) -> Result<HashSet<String>> {
 ///     &Authentication::Password("pass".into())
 /// )?;
 ///
-/// let entries = manifest_db::query_all_entries(&backup.db)?;
+/// let entries = manifest_db::query_all_entries(backup.db.as_ref().unwrap())?;
 /// println!("File count: {}", entries.len());
 /// # Ok::<(), crabapple::error::BackupError>(())
 /// ```
@@ -254,7 +254,7 @@ pub fn query_all_entries(conn: &Connection) -> Result<Vec<BackupFileEntry>> {
 ///     &Authentication::Password("pass".into())
 /// )?;
 ///
-/// if let Some(entry) = manifest_db::query_file_by_id(&backup.db, "fileid")? {
+/// if let Some(entry) = manifest_db::query_file_by_id(backup.db.as_ref().unwrap(), "fileid")? {
 ///     println!("Found file: {}", entry.file_id);
 /// }
 /// # Ok::<(), crabapple::error::BackupError>(())
