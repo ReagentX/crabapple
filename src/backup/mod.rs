@@ -103,30 +103,6 @@ impl Backup {
         })
     }
 
-    /// Returns the current manifest database connection, if available.
-    ///
-    /// # Returns
-    /// An [`Result<Connection>`] representing the current database connection.
-    ///
-    /// # Errors
-    /// Returns [`BackupError::DatabaseClosed`] if the manifest database connection is closed.
-    ///
-    /// # Examples
-    /// ```no_run
-    /// use crabapple::{Backup, Authentication};
-    ///
-    /// let backup = Backup::open(
-    ///     "/path/to/backup",
-    ///     &Authentication::Password("pass".into()),
-    /// )?;
-    ///
-    /// let db = backup.db()?;
-    /// println!("Database connection: {:?}", db);
-    /// # Ok::<(), crabapple::error::BackupError>(())
-    pub fn db(&self) -> Result<&Connection> {
-        self.manifest_db.db()
-    }
-
     /// Returns the current device `UDID` (the backup folder name).
     ///
     /// # Errors
