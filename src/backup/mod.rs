@@ -12,8 +12,6 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use rusqlite::Connection;
-
 use crate::{
     backup::{
         crypto::{AesCbcDecryptReader, aes_decrypt_cbc_with_padding, aes_kw_unwrap},

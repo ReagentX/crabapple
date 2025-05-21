@@ -144,7 +144,7 @@ impl ManifestDb {
     ///     &Authentication::Password("pass".into()),
     /// )?;
     ///
-    /// let db = backup.db()?;
+    /// let db = backup.manifest_db.db()?;
     /// println!("Database connection: {:?}", db);
     /// # Ok::<(), crabapple::error::BackupError>(())
     pub fn db(&self) -> Result<&Connection> {
