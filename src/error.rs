@@ -14,6 +14,9 @@ pub enum BackupError {
     /// `SQLite` database error (e.g., opening or querying Manifest.db).
     Database(rusqlite::Error),
 
+    /// The database was already closed
+    DatabaseClosed,
+
     /// Cryptographic operation failed, with a descriptive message.
     Crypto(String),
 
@@ -77,6 +80,7 @@ impl fmt::Display for BackupError {
         match self {
             BackupError::Io(err) => write!(f, "IO error: {err}"),
             BackupError::Database(err) => write!(f, "SQLite database error: {err}"),
+            BackupError::DatabaseClosed => write!(f, "Manifest.db was already closed!"),
             BackupError::Crypto(msg) => write!(f, "Cryptography error: {msg}"),
             BackupError::ConversionFailed(why) => {
                 write!(f, "Conversion failed: {why}")
