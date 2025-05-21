@@ -4,10 +4,6 @@
 
 Inspired by [`imessage-exporter`](https://github.com/ReagentX/imessage-exporter), `crabapple` provides a flexible foundation for any project that needs to access iOS backup data.
 
-## ⚠️ Warning ⚠️
-
-This library is currently in beta state and should not be used in production code.
-
 ## Features
 
 - Load and parse the backup's `Manifest.plist` to obtain metadata, device info, and encryption parameters
