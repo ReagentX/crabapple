@@ -109,6 +109,27 @@ impl Backup {
         })
     }
 
+    /// Returns the current database connection, if available.
+    ///
+    /// # Returns
+    /// An [`Result<Connection>`] representing the current database connection.
+    ///
+    /// # Examples
+    /// ```no_run
+    /// use crabapple::{Backup, Authentication};
+    ///
+    /// let backup = Backup::open(
+    ///     "/path/to/backup",
+    ///     &Authentication::Password("pass".into()),
+    /// )?;
+    ///
+    /// let db = backup.db()?;
+    /// println!("Database connection: {:?}", db);
+    /// # Ok::<(), crabapple::error::BackupError>(())
+    pub fn db(&self) -> Result<&Connection> {
+        self.db.as_ref().ok_or(BackupError::DatabaseClosed)
+    }
+
     /// Returns the current device `UDID` (the backup folder name).
     ///
     /// # Errors
@@ -328,7 +349,7 @@ impl Backup {
     /// # Ok::<(), crabapple::error::BackupError>(())
     /// ```
     pub fn query_all_domains(&self) -> Result<HashSet<String>> {
-        query_all_domains(self.db.as_ref().ok_or(BackupError::DatabaseClosed)?)
+        query_all_domains(self.db()?)
     }
 
     /// Get the filesystem path to the decrypted (or raw) `Manifest.db` file.
@@ -376,7 +397,7 @@ impl Backup {
     /// # Ok::<(), crabapple::error::BackupError>(())
     /// ```
     pub fn entries(&self) -> Result<Vec<BackupFileEntry>> {
-        query_all_entries(self.db.as_ref().ok_or(BackupError::DatabaseClosed)?)
+        query_all_entries(self.db()?)
     }
 
     /// Get a single file entry by its file ID.
@@ -403,11 +424,8 @@ impl Backup {
     /// # Ok::<(), crabapple::error::BackupError>(())
     /// ```
     pub fn get_file(&self, file_id: &str) -> Result<BackupFileEntry> {
-        query_file_by_id(
-            self.db.as_ref().ok_or(BackupError::DatabaseClosed)?,
-            file_id,
-        )?
-        .ok_or_else(|| BackupError::FileNotFoundInBackup(file_id.to_string()))
+        query_file_by_id(self.db()?, file_id)?
+            .ok_or_else(|| BackupError::FileNotFoundInBackup(file_id.to_string()))
     }
 
     /// Access parsed `Manifest.plist` metadata.
