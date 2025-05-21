@@ -400,15 +400,6 @@ impl Backup {
             .ok_or_else(|| BackupError::FileNotFoundInBackup(file_id.to_string()))
     }
 
-    /// Access parsed `Manifest.plist` metadata.
-    ///
-    /// # Returns
-    /// A reference to the parsed [`Manifest`] object.
-    #[must_use]
-    pub fn manifest(&self) -> &ManifestData {
-        &self.manifest.manifest_data
-    }
-
     /// Decrypt the file represented by [`BackupFileEntry`], returning plaintext bytes.
     ///
     /// All operations are performed in memory, and the decrypted data is returned as a byte vector.
@@ -438,6 +429,10 @@ impl Backup {
     /// # Ok::<(), crabapple::error::BackupError>(())
     /// ```
     pub fn decrypt_entry(&self, entry: &BackupFileEntry) -> Result<Vec<u8>> {
+        if !self.is_encrypted() {
+            return Err(BackupError::NotEncrypted);
+        }
+
         let source = self
             .backup_path
             .join(&entry.file_id[0..2])
@@ -445,11 +440,8 @@ impl Backup {
 
         let ciphertext = read(&source)?;
 
-        if self.is_encrypted() {
-            let key = self.unwrap_key_for_entry(entry)?;
-            return aes_decrypt_cbc_with_padding(&ciphertext, &key);
-        }
-        Err(BackupError::NotEncrypted)
+        let key = self.unwrap_key_for_entry(entry)?;
+        aes_decrypt_cbc_with_padding(&ciphertext, &key)
     }
 
     /// Decrypt the file represented by [`BackupFileEntry`], returning a streaming reader.
@@ -486,13 +478,14 @@ impl Backup {
         &self,
         entry: &BackupFileEntry,
     ) -> Result<crypto::AesCbcDecryptReader<BufReader<File>>> {
+        if !self.is_encrypted() {
+            return Err(BackupError::NotEncrypted);
+        }
+
         let ciphertext = File::open(self.backup_path.join(entry.source()))?;
 
-        if self.is_encrypted() {
-            let key = self.unwrap_key_for_entry(entry)?;
-            return AesCbcDecryptReader::from(ciphertext, &key);
-        }
-        Err(BackupError::NotEncrypted)
+        let key = self.unwrap_key_for_entry(entry)?;
+        AesCbcDecryptReader::from(ciphertext, &key)
     }
 
     /// Unwrap the encryption key for a specific file entry.
