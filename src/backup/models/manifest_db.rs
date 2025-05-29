@@ -227,7 +227,7 @@ impl ManifestDb {
 
             let blob = self
                 .db()?
-                .blob_open(rusqlite::DatabaseName::Main, "Files", "file", file_id, true)
+                .blob_open(rusqlite::MAIN_DB, "Files", "file", file_id, true)
                 .map_err(BackupError::Database)?;
 
             let plist = Value::from_reader(blob).map_err(|_| {
@@ -288,7 +288,7 @@ impl ManifestDb {
 
             let blob = self
                 .db()?
-                .blob_open(rusqlite::DatabaseName::Main, "Files", "file", file_id, true)
+                .blob_open(rusqlite::MAIN_DB, "Files", "file", file_id, true)
                 .map_err(BackupError::Database)?;
 
             let plist = Value::from_reader(blob).map_err(|_| {
