@@ -63,7 +63,12 @@ pub enum BackupError {
     KeyUnwrapFailed(u32),
 
     /// Cryptographic data had an unexpected length.
-    InvalidCryptoDataLength { expected: usize, actual: usize },
+    InvalidCryptoDataLength {
+        /// The expected length of the data in bytes.
+        expected: usize,
+        /// The actual length of the data in bytes.
+        actual: usize,
+    },
 
     /// Invalid TLV data encountered.
     InvalidTlvData(String),
