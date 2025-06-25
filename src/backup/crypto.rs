@@ -20,7 +20,7 @@ use sha2::Sha256;
 use crate::{
     backup::models::{
         file::WrappedKey,
-        keyring::{EncryptionKey, ProtectionClassKey},
+        keyring::{ClassKeyData, EncryptionKey, ProtectionClassKey},
         manifest::manifest_plist::ManifestData,
     },
     error::{BackupError, Result},
@@ -108,40 +108,43 @@ pub(crate) fn unlock_keys_from_manifest(
         .as_ref()
         .ok_or_else(|| BackupError::Crypto("BackupKeyBag not found in PlistInfo".to_string()))?;
 
-    for (class_id, class_key_data) in &key_ring.class_keys {
-        // Skip classes without WPKY
-        let Some(wpky) = &class_key_data.wpky else {
-            continue;
-        };
+    // Iterate over each class key in the key ring
+    for (&class_id, class_key_data) in &key_ring.class_keys {
+        match class_key_data {
+            //  Unwrapped key data with wrapped key
+            ClassKeyData {
+                wpky: Some(wpky),
+                wrap: Some(wrap_bytes),
+                ..
+            } => {
+                // Ensure wrap_bytes is exactly 4 bytes (u32)
+                let wrap_val = u32::from_be_bytes(
+                    wrap_bytes
+                        .as_slice()
+                        .try_into()
+                        .map_err(|_| BackupError::KeyUnwrapFailed(class_id))?,
+                );
+                // Check if the key is wrapped with AES Key Wrap
+                if wrap_val & 0x02 == 0 {
+                    // Not wrapped with AES Key Wrap, skip
+                    continue;
+                }
 
-        // Check wrap flags for passcode protection (bit 0x02)
-        let Some(wrap_bytes) = &class_key_data.wrap else {
-            continue;
-        };
+                // Create the Key Encryption Key (KEK) from the master key
+                let unwrapped = aes_kw_unwrap(master_key, &WrappedKey::from(wpky.clone()))
+                    .map_err(|_| BackupError::KeyUnwrapFailed(class_id))?;
 
-        // Parse wrap flag as big-endian u32
-        let wrap_val = u32::from_be_bytes(
-            wrap_bytes
-                .as_slice()
-                .try_into()
-                .map_err(|_| BackupError::KeyUnwrapFailed(*class_id))?,
-        );
-
-        if wrap_val & 0x02 == 0 {
-            continue; // Skip keys not protected by passcode
+                // Insert the unwrapped key into the map
+                unlocked_keys.insert(
+                    class_id,
+                    ProtectionClassKey {
+                        class_id,
+                        key: unwrapped,
+                    },
+                );
+            }
+            _ => continue,
         }
-
-        // Unwrap class key using AES key wrap (RFC 3394)
-        let unwrapped = aes_kw_unwrap(master_key, &WrappedKey::from(wpky.clone()))
-            .map_err(|_| BackupError::KeyUnwrapFailed(*class_id))?;
-
-        unlocked_keys.insert(
-            *class_id,
-            ProtectionClassKey {
-                class_id: *class_id,
-                key: unwrapped,
-            },
-        );
     }
     Ok(unlocked_keys)
 }

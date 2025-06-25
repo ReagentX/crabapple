@@ -68,35 +68,39 @@ impl Manifest {
     /// # Ok::<(), crabapple::error::BackupError>(())
     /// ```
     pub fn from_manifest_data(manifest_data: ManifestData, auth: &Authentication) -> Result<Self> {
-        let (main_decryption_key, unlocked_class_keys) = if manifest_data.is_encrypted {
-            let backup_key_ring = manifest_data.key_ring.as_ref().ok_or_else(|| {
-                BackupError::MissingPlistKey(
-                    "BackupKeyBag (required for encrypted backup)".to_string(),
-                )
-            })?;
-
-            let master_key = match auth {
-                Authentication::Password(password) => derive_key_from_password(
+        // Determine decryption strategy based on whether the backup is encrypted and the provided authentication.
+        let (main_decryption_key, unlocked_class_keys) = match (manifest_data.is_encrypted, auth) {
+            (true, Authentication::Password(password)) => {
+                let backup_key_ring = manifest_data.key_ring.as_ref().ok_or_else(|| {
+                    BackupError::MissingPlistKey(
+                        "BackupKeyBag (required for encrypted backup)".to_string(),
+                    )
+                })?;
+                let master_key = derive_key_from_password(
                     password.as_bytes(),
                     &backup_key_ring.dpsl,
                     backup_key_ring.dpic,
                     &backup_key_ring.salt,
                     backup_key_ring.iter,
-                )?,
-                Authentication::DerivedKey(key_hex) => hex_decode(key_hex)?.into(),
-                Authentication::None => return Err(BackupError::PasswordOrKeyIncorrect),
-            };
-
-            let unlocked_keys_map = unlock_keys_from_manifest(&master_key, &manifest_data)
-                .map_err(|_| BackupError::PasswordOrKeyIncorrect)?;
-
-            (Some(master_key), Some(unlocked_keys_map))
-        } else {
-            // Error if the backup is not encrypted but an authentication method is provided
-            if !matches!(auth, Authentication::None) {
-                return Err(BackupError::NotEncrypted);
+                )?;
+                let unlocked_keys_map = unlock_keys_from_manifest(&master_key, &manifest_data)
+                    .map_err(|_| BackupError::PasswordOrKeyIncorrect)?;
+                (Some(master_key), Some(unlocked_keys_map))
             }
-            (None, None)
+            (true, Authentication::DerivedKey(key_hex)) => {
+                manifest_data.key_ring.as_ref().ok_or_else(|| {
+                    BackupError::MissingPlistKey(
+                        "BackupKeyBag (required for encrypted backup)".to_string(),
+                    )
+                })?;
+                let master_key = hex_decode(key_hex)?.into();
+                let unlocked_keys_map = unlock_keys_from_manifest(&master_key, &manifest_data)
+                    .map_err(|_| BackupError::PasswordOrKeyIncorrect)?;
+                (Some(master_key), Some(unlocked_keys_map))
+            }
+            (true, Authentication::None) => return Err(BackupError::PasswordOrKeyRequired),
+            (false, Authentication::None) => (None, None),
+            (false, _) => return Err(BackupError::NotEncrypted),
         };
 
         Ok(Self {

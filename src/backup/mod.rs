@@ -477,7 +477,7 @@ impl Backup {
     pub fn decrypt_entry_stream(
         &self,
         entry: &BackupFileEntry,
-    ) -> Result<crypto::AesCbcDecryptReader<BufReader<File>>> {
+    ) -> Result<AesCbcDecryptReader<BufReader<File>>> {
         if !self.is_encrypted() {
             return Err(BackupError::NotEncrypted);
         }
