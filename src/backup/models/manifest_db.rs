@@ -314,18 +314,18 @@ impl ManifestDb {
 
 impl Drop for ManifestDb {
     fn drop(&mut self) {
-        if self.is_temporary {
-            if let Some(conn) = self.conn.take() {
-                conn.close().ok();
+        if self.is_temporary
+            && let Some(conn) = self.conn.take()
+        {
+            conn.close().ok();
 
-                // Remove the file, ignoring errors if any
-                if let Err(e) = remove_file(&self.db_path) {
-                    eprintln!(
-                        "warning: failed to remove temporary `Manifest.db` file at {}: {}",
-                        self.db_path.display(),
-                        e
-                    );
-                }
+            // Remove the file, ignoring errors if any
+            if let Err(e) = remove_file(&self.db_path) {
+                eprintln!(
+                    "warning: failed to remove temporary `Manifest.db` file at {}: {}",
+                    self.db_path.display(),
+                    e
+                );
             }
         }
     }
