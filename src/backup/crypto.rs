@@ -183,10 +183,10 @@ pub fn aes_decrypt_cbc_with_padding(data: &[u8], key: &EncryptionKey) -> Result<
     }
 
     // Ensure data length is a multiple of 16 bytes (AES block size)
-    let data_len = if data.len() % 16 != 0 {
-        data.len() - (data.len() % 16)
-    } else {
+    let data_len = if data.len().is_multiple_of(16) {
         data.len()
+    } else {
+        data.len() - (data.len() % 16)
     };
 
     let iv_bytes = [0u8; 16];
