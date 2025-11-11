@@ -13,7 +13,7 @@ use crate::error::{BackupError, Result};
 /// # Errors
 /// Returns [`BackupError::HexDecode`] if the string has odd length or invalid chars.
 pub(crate) fn hex_decode(hex_string: &str) -> Result<Vec<u8>> {
-    if hex_string.len() % 2 != 0 {
+    if !hex_string.len().is_multiple_of(2) {
         return Err(BackupError::HexDecode(
             "Input string has odd length".to_string(),
         ));
