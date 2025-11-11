@@ -13,7 +13,7 @@ categories = ["cryptography", "security", "database"]
 
 [dependencies]
 aes = "0.8.4"
-plist = "1.7.4"
+plist = "1.8.0"
 aes-kw = "0.2.1"
 pbkdf2 = { version = "0.12.2", features = ["simple", "hmac"] }
 rusqlite = { version = "0.37.0", features = ["bundled", "blob"] }
