@@ -12,11 +12,11 @@ keywords = ["ios", "cryptography", "backup"]
 categories = ["cryptography", "security", "database"]
 
 [dependencies]
-aes = "0.8.4"
-plist = "1.8.0"
-aes-kw = "0.2.1"
-pbkdf2 = { version = "0.12.2", features = ["simple", "hmac"] }
-rusqlite = { version = "0.39.0", features = ["bundled", "blob"] }
-cbc = "0.1.2"
-sha1 = "0.10.6"
-sha2 = "0.10.9"
+aes = "0.9.1"
+plist = "1.9.0"
+aes-kw = "0.3.1"
+pbkdf2 = { version = "0.13.0", features = ["hmac"] }
+rusqlite = { version = "0.40.0", features = ["bundled", "blob"] }
+cbc = "0.2.1"
+sha1 = "0.11.0"
+sha2 = "0.11.0"
