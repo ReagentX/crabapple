@@ -6,13 +6,14 @@ use std::{
 };
 
 use aes::{
-    Aes128, Aes192, Aes256,
+    Aes256,
     cipher::{
-        BlockDecryptMut, BlockEncryptMut, KeyIvInit, block_padding::Pkcs7,
-        generic_array::GenericArray,
+        Array, BlockModeDecrypt, BlockModeEncrypt, KeyIvInit,
+        block_padding::{Padding, Pkcs7},
+        consts::{U16, U24, U32},
     },
 };
-use aes_kw::Kek;
+use aes_kw::{KeyInit, KwAes128, KwAes192, KwAes256};
 use pbkdf2::pbkdf2_hmac;
 use sha1::Sha1;
 use sha2::Sha256;
@@ -174,13 +175,12 @@ pub(crate) fn unlock_keys_from_manifest(
 /// assert_eq!(plaintext, data);
 /// ```
 pub fn aes_decrypt_cbc_with_padding(data: &[u8], key: &EncryptionKey) -> Result<Vec<u8>> {
-    if key.len() != 32 {
-        // Assuming AES-256 for this function
-        return Err(BackupError::InvalidCryptoDataLength {
+    let key_array = <&Array<u8, U32>>::try_from(key.as_slice()).map_err(|_| {
+        BackupError::InvalidCryptoDataLength {
             expected: 32,
             actual: key.len(),
-        });
-    }
+        }
+    })?;
 
     // Ensure data length is a multiple of 16 bytes (AES block size)
     let data_len = if data.len().is_multiple_of(16) {
@@ -189,8 +189,7 @@ pub fn aes_decrypt_cbc_with_padding(data: &[u8], key: &EncryptionKey) -> Result<
         data.len() - (data.len() % 16)
     };
 
-    let iv_bytes = [0u8; 16];
-    let iv = GenericArray::from_slice(&iv_bytes);
+    let iv: [u8; 16] = [0u8; 16];
 
     // Create buffer with truncated data if necessary
     let mut buf = if data.len() == data_len {
@@ -199,11 +198,10 @@ pub fn aes_decrypt_cbc_with_padding(data: &[u8], key: &EncryptionKey) -> Result<
         data[..data_len].to_vec()
     };
 
-    let key_ga = GenericArray::from_slice(key);
-    let cipher = Aes256CbcDec::new(key_ga, iv);
+    let cipher = Aes256CbcDec::new(key_array, &iv.into());
 
     let pt_len = cipher
-        .decrypt_padded_mut::<Pkcs7>(&mut buf)
+        .decrypt_padded::<Pkcs7>(&mut buf)
         .map_err(|e| BackupError::Crypto(format!("AES CBC decryption error (padding): {e:?}")))?
         .len();
 
@@ -236,24 +234,21 @@ pub fn aes_decrypt_cbc_with_padding(data: &[u8], key: &EncryptionKey) -> Result<
 /// assert_eq!(pt, data);
 /// ```
 pub fn aes_encrypt_cbc_with_padding(data: &[u8], key: &EncryptionKey) -> Result<Vec<u8>> {
-    if key.len() != 32 {
-        // Assuming AES-256 for this function
-        return Err(BackupError::InvalidCryptoDataLength {
+    let key_array = <&Array<u8, U32>>::try_from(key.as_slice()).map_err(|_| {
+        BackupError::InvalidCryptoDataLength {
             expected: 32,
             actual: key.len(),
-        });
-    }
-    let iv_bytes = [0u8; 16];
-    let iv = GenericArray::from_slice(&iv_bytes);
+        }
+    })?;
+    let iv: [u8; 16] = [0u8; 16];
 
     let mut buffer = vec![0u8; data.len() + 16]; // Max possible size for ciphertext with padding
     buffer[..data.len()].copy_from_slice(data);
 
-    let key_ga = GenericArray::from_slice(key);
-    let cipher = Aes256CbcEnc::new(key_ga, iv);
+    let cipher = Aes256CbcEnc::new(key_array, &iv.into());
 
     let ct_len = cipher
-        .encrypt_padded_mut::<Pkcs7>(&mut buffer, data.len())
+        .encrypt_padded::<Pkcs7>(&mut buffer, data.len())
         .map_err(|e| BackupError::Crypto(format!("AES CBC encryption error (padding): {e:?}")))?
         .len();
 
@@ -287,20 +282,26 @@ pub(crate) fn aes_kw_unwrap(
     match kek_bytes.len() {
         16 => {
             // AES-128 key unwrap
-            let kek = Kek::<Aes128>::new(GenericArray::from_slice(kek_bytes));
-            kek.unwrap(wrapped_data, &mut unwrapped)
+            let key = <&Array<u8, U16>>::try_from(kek_bytes.as_slice())
+                .map_err(BackupError::ConversionFailed)?;
+            let kek = KwAes128::new(key);
+            kek.unwrap_key(wrapped_data, &mut unwrapped)
                 .map_err(|_| BackupError::Crypto("AES 128 Key Unwrap failed".to_string()))?;
         }
         24 => {
             // AES-192 key unwrap
-            let kek = Kek::<Aes192>::new(GenericArray::from_slice(kek_bytes));
-            kek.unwrap(wrapped_data, &mut unwrapped)
+            let key = <&Array<u8, U24>>::try_from(kek_bytes.as_slice())
+                .map_err(BackupError::ConversionFailed)?;
+            let kek = KwAes192::new(key);
+            kek.unwrap_key(wrapped_data, &mut unwrapped)
                 .map_err(|_| BackupError::Crypto("AES 192 Key Unwrap failed".to_string()))?;
         }
         32 => {
             // AES-256 key unwrap
-            let kek = Kek::<Aes256>::new(GenericArray::from_slice(kek_bytes));
-            kek.unwrap(wrapped_data, &mut unwrapped)
+            let key = <&Array<u8, U32>>::try_from(kek_bytes.as_slice())
+                .map_err(BackupError::ConversionFailed)?;
+            let kek = KwAes256::new(key);
+            kek.unwrap_key(wrapped_data, &mut unwrapped)
                 .map_err(|_| BackupError::Crypto("AES 256 Key Unwrap failed".to_string()))?;
         }
         _ => {
@@ -364,12 +365,12 @@ impl<R: Read> AesCbcDecryptReader<R> {
     /// copy(&mut reader, &mut plaintext).unwrap();
     /// ```
     pub fn from(reader: R, key: &EncryptionKey) -> Result<AesCbcDecryptReader<BufReader<R>>> {
-        if key.len() != 32 {
-            return Err(BackupError::InvalidCryptoDataLength {
+        let key_array = <&Array<u8, U32>>::try_from(key.as_slice()).map_err(|_| {
+            BackupError::InvalidCryptoDataLength {
                 expected: 32,
                 actual: key.len(),
-            });
-        }
+            }
+        })?;
         // Wrap source in buffered reader to reduce syscalls
         let mut buf_reader = BufReader::with_capacity(STREAM_BUFFER_SIZE, reader);
         // Read first cipher block into lookahead buffer
@@ -385,9 +386,8 @@ impl<R: Read> AesCbcDecryptReader<R> {
                 "Unexpected ciphertext length: {n}"
             )));
         }
-        let iv = GenericArray::from_slice(&[0u8; 16]);
-        let key_ga = GenericArray::from_slice(key);
-        let cipher = Aes256CbcDec::new(key_ga, iv);
+        let iv: [u8; 16] = [0u8; 16];
+        let cipher = Aes256CbcDec::new(key_array, &iv.into());
         Ok(AesCbcDecryptReader {
             inner: buf_reader,
             cipher,
@@ -422,14 +422,11 @@ impl<R: Read> Read for AesCbcDecryptReader<R> {
             let n = self.inner.read(&mut chunk)?;
             if n == 0 {
                 // Final block: decrypt & unpad last lookahead block
-                let mut tail = self.lookahead.to_vec();
-                let pt = self
-                    .cipher
-                    .clone()
-                    .decrypt_padded_mut::<Pkcs7>(&mut tail)
-                    .map_err(|e| {
-                        io::Error::new(io::ErrorKind::InvalidData, format!("Padding error: {e:?}"))
-                    })?;
+                let mut block: Array<u8, U16> = self.lookahead.into();
+                self.cipher.decrypt_block(&mut block);
+                let pt = Pkcs7::unpad(&block).map_err(|e| {
+                    io::Error::new(io::ErrorKind::InvalidData, format!("Padding error: {e:?}"))
+                })?;
                 self.buf.clear();
                 self.buf.extend_from_slice(pt);
                 self.buf_pos = 0;
@@ -447,11 +444,16 @@ impl<R: Read> Read for AesCbcDecryptReader<R> {
                 } else {
                     // Decrypt all except the last block for chaining/padding
                     self.buf.clear();
-                    for i in 0..(num_blocks - 1) {
-                        let start = i * 16;
-                        let mut arr = GenericArray::clone_from_slice(&data[start..start + 16]);
-                        self.cipher.decrypt_block_mut(&mut arr);
-                        self.buf.extend_from_slice(&arr);
+                    for chunk in data[..(num_blocks - 1) * 16].chunks_exact(16) {
+                        let block = <&Array<u8, U16>>::try_from(chunk).map_err(|e| {
+                            io::Error::new(
+                                io::ErrorKind::InvalidData,
+                                format!("block conversion: {e}"),
+                            )
+                        })?;
+                        let mut block = *block;
+                        self.cipher.decrypt_block(&mut block);
+                        self.buf.extend_from_slice(&block);
                     }
                     // Update lookahead to last full block
                     let last_start = (num_blocks - 1) * 16;
@@ -469,9 +471,7 @@ impl<R: Read> Read for AesCbcDecryptReader<R> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aes::cipher::generic_array::GenericArray;
-    use aes::{Aes128, Aes192, Aes256};
-    use aes_kw::Kek;
+    use aes_kw::{KwAes128, KwAes192, KwAes256};
 
     #[test]
     fn test_derive_key_consistency() {
@@ -496,16 +496,19 @@ mod tests {
         let mut wrapped = vec![0u8; plain.len() + 8];
         match kek_bytes.len() {
             16 => {
-                let kek = Kek::<Aes128>::new(GenericArray::from_slice(kek_bytes));
-                kek.wrap(plain, &mut wrapped).unwrap();
+                let key: [u8; 16] = kek_bytes.as_slice().try_into().unwrap();
+                let kek = KwAes128::new(&key.into());
+                kek.wrap_key(plain, &mut wrapped).unwrap();
             }
             24 => {
-                let kek = Kek::<Aes192>::new(GenericArray::from_slice(kek_bytes));
-                kek.wrap(plain, &mut wrapped).unwrap();
+                let key: [u8; 24] = kek_bytes.as_slice().try_into().unwrap();
+                let kek = KwAes192::new(&key.into());
+                kek.wrap_key(plain, &mut wrapped).unwrap();
             }
             32 => {
-                let kek = Kek::<Aes256>::new(GenericArray::from_slice(kek_bytes));
-                kek.wrap(plain, &mut wrapped).unwrap();
+                let key: [u8; 32] = kek_bytes.as_slice().try_into().unwrap();
+                let kek = KwAes256::new(&key.into());
+                kek.wrap_key(plain, &mut wrapped).unwrap();
             }
             _ => panic!("Invalid KEK length"),
         }
